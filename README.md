@@ -30,14 +30,13 @@ vercel.json        rewrites /api/(.*) to /api/index.js
 | Manager | `/review-login.html` | Work the transfer requests, open any case, read the packet, approve, send back or reject with a note, filter by period, export CSV, see the report |
 | Administrator | `/review-login.html` | Everything a manager can do, submit packets, and see the workflow, deployment and account settings |
 
-Seven demo accounts, seeded in `lib/auth.js`:
+Six demo accounts, seeded in `lib/auth.js`:
 
 | Name | Email | Role | Password |
 |---|---|---|---|
 | Amelia Grant | employee1@aaico.demo | Employee | Employee1-2026 |
 | Daniel Osei | employee2@aaico.demo | Employee | Employee2-2026 |
 | Priya Raman | employee3@aaico.demo | Employee | Employee3-2026 |
-| Tomas Wexler | employee4@aaico.demo | Employee | Employee4-2026 |
 | Hana Suzuki | manager1@aaico.demo | Manager | Manager1-2026 |
 | Marcus Bell | manager2@aaico.demo | Manager | Manager2-2026 |
 | Nadia Farouk | admin@aaico.demo | Administrator | Admin-2026 |
@@ -93,7 +92,10 @@ the top of that file are the only thing to edit.
 3. Redeploy. **Environment changes never reach an existing build.** Adding a
    variable or connecting a store does nothing at all until the next deploy.
 4. Open `/api/health`. It reports which variables are missing and whether
-   history storage is reachable.
+   history storage is reachable. **Check `serviceKeyLength` there: the Opus
+   service key is 97 characters including its leading underscore.** A key that
+   is one character short is the usual cause of `Opus rejected this server's
+   service key`, because the underscore is easy to drop when pasting.
 
 ### History storage, optional
 
