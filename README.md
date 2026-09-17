@@ -16,9 +16,47 @@ server.js          Express app, exports `app`. Holds the key. All /api routes.
 api/index.js       module.exports = require('../server')   <- the Vercel entry point
 lib/opus.js        the only file that calls Opus. Variable ids live here as constants.
 lib/store.js       optional history storage, KV REST or Redis over TCP
-public/            three pages, one script per page, one stylesheet
+lib/auth.js        the five accounts, roles, and the signed session cookie
+public/            six pages, one script per page, one stylesheet
 vercel.json        rewrites /api/(.*) to /api/index.js
 ```
+
+## Who can do what
+
+| Role | Sign in at | Can |
+|---|---|---|
+| Advisor | `/login.html` | Submit a packet, see and open only their own runs |
+| Reviewer | `/review-login.html` | Work the queue of every finished run, open any case, read the packet, approve, send back or reject with a note |
+| Administrator | `/review-login.html` | Everything a reviewer can do, and submit packets too |
+
+Accounts for the testing phase, seeded in `lib/auth.js`:
+
+| Email | Role | Password |
+|---|---|---|
+| advisor1@aaico.demo | advisor | Advisor1-2026 |
+| advisor2@aaico.demo | advisor | Advisor2-2026 |
+| reviewer1@aaico.demo | reviewer | Review1-2026 |
+| reviewer2@aaico.demo | reviewer | Review2-2026 |
+| soufiane.douhaib@aaico.com | admin | Admin-2026 |
+
+The two advisor logins are printed on the advisor sign in page so anyone can try
+the console. Reviewer and admin credentials are never shown on any page.
+
+Replace the whole set without touching code by setting `APP_USERS`:
+
+```
+APP_USERS="a@firm.com|advisor|secret|Ana Diaz, r@firm.com|reviewer|secret|Rob Lee"
+```
+
+Format is `email|role|password|display name`, comma or newline separated, role
+one of advisor, reviewer, admin. Once `APP_USERS` is set the demo box disappears
+by itself. Passwords are hashed with scrypt at boot and compared in constant
+time; they are never written to storage.
+
+Sessions are a signed cookie, HttpOnly, SameSite Lax, twelve hours, with no
+session table to keep. Set `SESSION_SECRET` to a long random string in the
+project environment: without it the app derives a key from the service key,
+which works but means rotating the service key signs everyone out.
 
 Plain HTML, CSS and ES5 flavoured JavaScript in `public/`. No bundler, no
 framework, no build step.
@@ -78,6 +116,22 @@ are exercised in the local harness.
 npm install
 OPUS_SERVICE_KEY=... npm start     # http://localhost:3000
 ```
+
+## Review and privacy behaviour
+
+- Advisors are scoped by owner, and a case belonging to someone else answers
+  `404`, never `403`, so the list cannot be used to probe for other people's
+  work.
+- A social security number is masked at the last moment before rendering, in
+  findings text, in the advisor explanation and in the extracted fields. The
+  workflow quotes firm records verbatim, so the masking cannot be left to it.
+- Raw workflow output and the copy JSON button are reviewer tools and are not
+  rendered for advisors.
+- The submitted packet is fetched server side with the service key and streamed
+  to the browser, so a reviewer never needs a sign in of their own to read it.
+- A decision needs a note unless it is an approval, and a run that never
+  finished is kept out of the waiting count rather than being offered for
+  approval.
 
 ## Notes worth keeping
 

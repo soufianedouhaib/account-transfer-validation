@@ -4,10 +4,12 @@ const path = require('path');
 const express = require('express');
 const opus = require('./lib/opus');
 const store = require('./lib/store');
+const auth = require('./lib/auth');
 
 const app = express();
 
 app.use(express.json({ limit: '1mb' }));
+app.use(auth.attach);
 app.use(
   express.static(path.join(__dirname, 'public'), {
     extensions: ['html'],
@@ -16,10 +18,14 @@ app.use(
 );
 
 const LIST_KEY = 'atv:cases';
+const OWNER_KEY = function (email) {
+  return 'atv:cases:' + String(email).toLowerCase();
+};
 const RECORD_KEY = function (id) {
   return 'atv:case:' + id;
 };
-const HISTORY_CAP = 200;
+const HISTORY_CAP = 300;
+const BOOTED_AT = new Date().toISOString();
 
 /* ------------------------------------------------------------------ *
  * Projection. Every screen agrees because they all read this one map. *
@@ -47,6 +53,7 @@ function toRow(rec) {
   const form = (result.extracted && result.extracted.form) || {};
   const audit = result.audit || {};
   const money = parseMoney(form.value);
+  const review = rec.review || null;
   return {
     caseId: rec.caseId,
     title: rec.title || null,
@@ -65,7 +72,15 @@ function toRow(rec) {
     lowConfidence: typeof audit.low_confidence === 'number' ? audit.low_confidence : null,
     createdAt: rec.createdAt || null,
     completedAt: rec.completedAt || null,
-    failure: rec.failure || null
+    failure: rec.failure || null,
+    submittedBy: (rec.owner && rec.owner.email) || null,
+    submittedByName: (rec.owner && rec.owner.name) || null,
+    hasDocument: Boolean(rec.fileUrl),
+    reviewState: review ? review.decision : 'pending',
+    reviewNote: review ? review.note || null : null,
+    reviewedBy: review ? review.by || null : null,
+    reviewedByName: review ? review.byName || review.by || null : null,
+    reviewedAt: review ? review.at || null : null
   };
 }
 
@@ -114,9 +129,19 @@ async function saveRecord(rec) {
   try {
     await store.setJson(RECORD_KEY(rec.caseId), rec);
     await store.pushId(LIST_KEY, rec.caseId, HISTORY_CAP);
+    if (rec.owner && rec.owner.email) {
+      await store.pushId(OWNER_KEY(rec.owner.email), rec.caseId, HISTORY_CAP);
+    }
   } catch (e) {
     // History is a convenience. A storage outage must never fail a validation.
   }
+}
+
+/** Advisors see their own work. Reviewers and the admin see all of it. */
+function maySee(user, rec) {
+  if (!user || !rec) return false;
+  if (auth.canReview(user)) return true;
+  return Boolean(rec.owner && rec.owner.email === user.email);
 }
 
 function sendError(res, err) {
@@ -128,17 +153,93 @@ function sendError(res, err) {
 }
 
 /* ------------------------------------------------------------------ *
- * Routes                                                              *
+ * Session                                                             *
+ * ------------------------------------------------------------------ */
+
+app.post('/api/login', function (req, res) {
+  const body = req.body || {};
+  const user = auth.authenticate(body.email, body.password);
+  if (!user) {
+    return res.status(401).json({ error: 'That email and password do not match an account.' });
+  }
+  // The reviewer page asks for a reviewer. An advisor who lands there is sent
+  // to the right door rather than silently signed in to a screen they cannot use.
+  if (body.expect === 'reviewer' && !auth.canReview(user)) {
+    return res.status(403).json({
+      error: 'That account is an advisor account. Use the advisor sign in.',
+      redirect: '/login.html'
+    });
+  }
+  if (body.expect === 'advisor' && auth.canReview(user) && user.role !== 'admin') {
+    return res.status(403).json({
+      error: 'That account is a reviewer account. Use the reviewer sign in.',
+      redirect: '/review-login.html'
+    });
+  }
+  auth.setCookie(req, res, auth.issue(user));
+  res.json({
+    signedIn: true,
+    email: user.email,
+    role: user.role,
+    name: user.name,
+    home: auth.canReview(user) ? '/review.html' : '/'
+  });
+});
+
+app.post('/api/logout', function (req, res) {
+  auth.clearCookie(req, res);
+  res.json({ signedIn: false });
+});
+
+app.get('/api/me', function (req, res) {
+  const user = req.user;
+  res.json({
+    signedIn: Boolean(user),
+    email: user ? user.email : null,
+    role: user ? user.role : null,
+    roleLabel: user ? auth.ROLE_LABEL[user.role] || user.role : null,
+    name: user ? user.name : null,
+    canReview: auth.canReview(user),
+    canSubmit: Boolean(user) && (user.role === 'advisor' || user.role === 'admin'),
+    appName: 'Account Transfer Validation',
+    historyEnabled: store.configured,
+    configured: opus.missingEnv().length === 0,
+    demoAccounts: auth.usingDefaultAccounts ? auth.demoAdvisors : []
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * Health                                                              *
  * ------------------------------------------------------------------ */
 
 app.get('/api/health', async function (req, res) {
   const missing = opus.missingEnv();
   const storage = await store.ping();
+  // Names only, never values: enough to tell a missing variable from a
+  // misnamed one, or a stale build from a fresh one.
+  const seenEnvNames = Object.keys(process.env)
+    .filter(function (k) {
+      return /OPUS|KV_REST|REDIS|UPSTASH|APP_USERS|SESSION_SECRET/i.test(k);
+    })
+    .sort();
   res.json({
     ok: missing.length === 0,
     missingEnv: missing,
+    seenEnvNames: seenEnvNames,
+    serviceKeyLength: (process.env.OPUS_SERVICE_KEY || '').length,
     workflowId: opus.WORKFLOW_ID,
     baseUrl: opus.BASE,
+    accounts: {
+      count: auth.accountCount,
+      usingDefaults: auth.usingDefaultAccounts,
+      sessionSecretSet: Boolean(process.env.SESSION_SECRET)
+    },
+    build: {
+      target: process.env.VERCEL_ENV || 'local',
+      deployment: process.env.VERCEL_URL || null,
+      commit: (process.env.VERCEL_GIT_COMMIT_SHA || '').slice(0, 7) || null,
+      startedAt: BOOTED_AT
+    },
     history: {
       configured: store.configured,
       mode: store.mode,
@@ -148,20 +249,20 @@ app.get('/api/health', async function (req, res) {
   });
 });
 
-app.get('/api/me', function (req, res) {
-  // No sign in on this build. The shape is kept so pages can gate their first
-  // render on one call, and so roles can be added later without a rewrite.
-  res.json({
-    signedIn: true,
-    role: 'advisor',
-    appName: 'Account Transfer Validation',
-    historyEnabled: store.configured,
-    configured: opus.missingEnv().length === 0
-  });
-});
+/* ------------------------------------------------------------------ *
+ * Submitting                                                          *
+ * ------------------------------------------------------------------ */
+
+function requireSubmitter(req, res, next) {
+  if (!req.user) return res.status(401).json({ error: 'Sign in to continue.' });
+  if (req.user.role === 'reviewer') {
+    return res.status(403).json({ error: 'Reviewer accounts do not submit packets.' });
+  }
+  next();
+}
 
 /** Step 1. A presigned slot. The browser uploads straight to storage. */
-app.post('/api/upload-url', async function (req, res) {
+app.post('/api/upload-url', requireSubmitter, async function (req, res) {
   const missing = opus.missingEnv();
   if (missing.length) {
     return res.status(503).json({ error: 'Server is not configured: ' + missing.join(', ') });
@@ -190,6 +291,7 @@ app.post('/api/upload-url', async function (req, res) {
  */
 app.put(
   '/api/upload-proxy',
+  requireSubmitter,
   express.raw({ type: '*/*', limit: '4mb' }),
   async function (req, res) {
     const target = String(req.query.to || '');
@@ -210,7 +312,7 @@ app.put(
 );
 
 /** Step 2. Create the case and start it. */
-app.post('/api/submit', async function (req, res) {
+app.post('/api/submit', requireSubmitter, async function (req, res) {
   const missing = opus.missingEnv();
   if (missing.length) {
     return res.status(503).json({ error: 'Server is not configured: ' + missing.join(', ') });
@@ -222,20 +324,25 @@ app.post('/api/submit', async function (req, res) {
   if (!fileUrl) return res.status(400).json({ error: 'fileUrl is required.' });
 
   try {
-    const caseId = await opus.initiateCase(title, 'Submitted through the Account Transfer Validation console.');
+    const caseId = await opus.initiateCase(
+      title,
+      'Submitted by ' + req.user.email + ' through the Account Transfer Validation console.'
+    );
     await opus.executeCase(caseId, fileUrl);
     const rec = {
       caseId: caseId,
       title: title,
       fileName: fileName,
       fileUrl: fileUrl,
+      owner: { email: req.user.email, name: req.user.name },
       status: 'IN_PROGRESS',
       createdAt: new Date().toISOString(),
       completedAt: null,
       result: null,
       explanation: null,
       workflowError: '',
-      failure: null
+      failure: null,
+      review: null
     };
     await saveRecord(rec);
     res.json({ caseId: caseId, row: toRow(rec) });
@@ -244,26 +351,56 @@ app.post('/api/submit', async function (req, res) {
   }
 });
 
+/* ------------------------------------------------------------------ *
+ * Reading one case                                                    *
+ * ------------------------------------------------------------------ */
+
+function casePayload(rec, user) {
+  return {
+    status: rec.status,
+    terminal: Boolean(rec.result) || Boolean(rec.failure),
+    row: toRow(rec),
+    result: rec.result || null,
+    explanation: rec.explanation || null,
+    workflowError: rec.workflowError || '',
+    failure: rec.failure || null,
+    review: rec.review || null,
+    canReview: auth.canReview(user),
+    isOwner: Boolean(rec.owner && user && rec.owner.email === user.email),
+    stored: store.configured
+  };
+}
+
 /** Step 3. The browser polls this, never Opus. */
-app.get('/api/status/:caseId', async function (req, res) {
+app.get('/api/status/:caseId', auth.requireUser, async function (req, res) {
   const caseId = String(req.params.caseId);
   const missing = opus.missingEnv();
   if (missing.length) {
     return res.status(503).json({ error: 'Server is not configured: ' + missing.join(', ') });
   }
   try {
+    let rec = await loadRecord(caseId);
+    // A stored case belonging to somebody else is a 404, never a 403: a 403
+    // would confirm that the case exists.
+    if (rec && !maySee(req.user, rec)) {
+      return res.status(404).json({ error: 'No such case.' });
+    }
     const status = await opus.status(caseId);
-    let rec = (await loadRecord(caseId)) || {
-      caseId: caseId,
-      title: null,
-      fileName: null,
-      createdAt: null,
-      completedAt: null,
-      result: null,
-      explanation: null,
-      workflowError: '',
-      failure: null
-    };
+    if (!rec) {
+      rec = {
+        caseId: caseId,
+        title: null,
+        fileName: null,
+        owner: { email: req.user.email, name: req.user.name },
+        createdAt: null,
+        completedAt: null,
+        result: null,
+        explanation: null,
+        workflowError: '',
+        failure: null,
+        review: null
+      };
+    }
     rec.status = status;
 
     if (opus.isTerminal(status)) {
@@ -282,62 +419,176 @@ app.get('/api/status/:caseId', async function (req, res) {
       await saveRecord(rec);
     }
 
-    res.json({
-      status: status,
-      terminal: opus.isTerminal(status),
-      row: toRow(rec),
-      result: rec.result,
-      explanation: rec.explanation,
-      workflowError: rec.workflowError || '',
-      failure: rec.failure || null,
-      stored: store.configured
-    });
+    res.json(casePayload(rec, req.user));
   } catch (err) {
     sendError(res, err);
   }
 });
 
-/** A finished case, straight from storage where possible. */
-app.get('/api/case/:caseId', async function (req, res) {
+/** A stored case, straight from storage where possible. */
+app.get('/api/case/:caseId', auth.requireUser, async function (req, res) {
   const caseId = String(req.params.caseId);
   try {
     const rec = await loadRecord(caseId);
-    if (!rec) {
-      // Nothing known about this id. 404 rather than 403, which would confirm
-      // that some other caller's case exists.
+    if (!rec || !maySee(req.user, rec)) {
       return res.status(404).json({ error: 'No such case.' });
     }
-    const finished = Boolean(rec.result) || Boolean(rec.failure);
-    res.json({
-      status: rec.status,
-      terminal: finished,
-      row: toRow(rec),
-      result: rec.result || null,
-      explanation: rec.explanation || null,
-      workflowError: rec.workflowError || '',
-      failure: rec.failure || null,
-      stored: true
-    });
+    res.json(casePayload(rec, req.user));
   } catch (err) {
     sendError(res, err);
   }
 });
 
-app.get('/api/history', async function (req, res) {
+/**
+ * The submitted packet, fetched server side so the reviewer never needs an Opus
+ * session of their own. The service key is tried first; some file URLs are
+ * presigned and reject an extra auth header, so a plain fetch is the fallback.
+ */
+app.get('/api/case/:caseId/document', auth.requireUser, async function (req, res) {
+  const caseId = String(req.params.caseId);
+  try {
+    const rec = await loadRecord(caseId);
+    if (!rec || !maySee(req.user, rec)) {
+      return res.status(404).json({ error: 'No such case.' });
+    }
+    if (!rec.fileUrl) {
+      return res.status(404).json({ error: 'No document was stored for this case.' });
+    }
+
+    let upstream = null;
+    const attempts = [
+      { 'x-service-key': process.env.OPUS_SERVICE_KEY || '' },
+      {}
+    ];
+    for (let i = 0; i < attempts.length; i++) {
+      try {
+        const candidate = await fetch(rec.fileUrl, { headers: attempts[i] });
+        if (candidate.ok) {
+          upstream = candidate;
+          break;
+        }
+        upstream = candidate;
+      } catch (e) {
+        upstream = null;
+      }
+    }
+    if (!upstream || !upstream.ok) {
+      return res.status(502).json({
+        error:
+          'The stored document could not be fetched' +
+          (upstream ? ' (status ' + upstream.status + ')' : '') +
+          '.',
+        fileUrl: rec.fileUrl
+      });
+    }
+
+    const type = upstream.headers.get('content-type') || 'application/octet-stream';
+    const buffer = Buffer.from(await upstream.arrayBuffer());
+    res.setHeader('Content-Type', type);
+    res.setHeader(
+      'Content-Disposition',
+      'inline; filename="' + String(rec.fileName || 'packet').replace(/[^\w.\- ]/g, '_') + '"'
+    );
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.send(buffer);
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+/* ------------------------------------------------------------------ *
+ * Lists                                                               *
+ * ------------------------------------------------------------------ */
+
+async function rowsFor(ids) {
+  const rows = [];
+  for (let i = 0; i < ids.length; i++) {
+    const rec = await loadRecord(ids[i]);
+    if (rec) rows.push(toRow(rec));
+  }
+  // Recording a decision rewrites the record, which would otherwise float that
+  // run to the top of the index. Submission time is what "newest first" means.
+  rows.sort(function (a, b) {
+    return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
+  });
+  return rows;
+}
+
+/** An advisor's own runs. A reviewer or admin sees everything. */
+app.get('/api/history', auth.requireUser, async function (req, res) {
   if (!store.configured) {
-    return res.json({ configured: false, rows: [], note: 'History is not configured.' });
+    return res.json({ configured: false, rows: [], scope: 'none', note: 'History is not configured.' });
   }
   const limit = Math.min(Number(req.query.limit) || 50, HISTORY_CAP);
+  const everything = auth.canReview(req.user) && req.query.scope !== 'mine';
   try {
-    const ids = await store.listIds(LIST_KEY, limit);
-    const rows = [];
-    for (let i = 0; i < ids.length; i++) {
-      const rec = await loadRecord(ids[i]);
-      if (rec) rows.push(toRow(rec));
-    }
-    res.json({ configured: true, rows: rows });
+    const ids = await store.listIds(everything ? LIST_KEY : OWNER_KEY(req.user.email), limit);
+    res.json({
+      configured: true,
+      scope: everything ? 'all' : 'mine',
+      rows: await rowsFor(ids)
+    });
   } catch (err) {
     res.json({ configured: true, rows: [], note: 'History is unavailable: ' + err.message });
+  }
+});
+
+/** The reviewer queue: every finished run, newest first. */
+app.get('/api/queue', auth.requireReviewer, async function (req, res) {
+  if (!store.configured) {
+    return res.json({
+      configured: false,
+      rows: [],
+      note: 'The queue needs run history. Connect a storage database and redeploy.'
+    });
+  }
+  try {
+    const ids = await store.listIds(LIST_KEY, HISTORY_CAP);
+    const rows = (await rowsFor(ids)).filter(function (row) {
+      return row.status === 'COMPLETED' || row.failure;
+    });
+    res.json({ configured: true, rows: rows });
+  } catch (err) {
+    res.json({ configured: true, rows: [], note: 'The queue is unavailable: ' + err.message });
+  }
+});
+
+/** Approve, reject or send back. A note is required on anything but approval. */
+app.post('/api/case/:caseId/review', auth.requireReviewer, async function (req, res) {
+  const caseId = String(req.params.caseId);
+  const body = req.body || {};
+  const decision = String(body.decision || '').toLowerCase();
+  const note = String(body.note || '').trim();
+
+  if (['approved', 'rejected', 'returned'].indexOf(decision) === -1) {
+    return res.status(400).json({ error: 'The decision must be approved, rejected or returned.' });
+  }
+  if (decision !== 'approved' && note.length < 3) {
+    return res.status(400).json({ error: 'A note is required when rejecting or sending a packet back.' });
+  }
+  if (!store.configured) {
+    return res.status(503).json({
+      error: 'Decisions cannot be saved because run history is not configured.'
+    });
+  }
+
+  try {
+    const rec = await loadRecord(caseId);
+    if (!rec) return res.status(404).json({ error: 'No such case.' });
+    if (!rec.result && !rec.failure) {
+      return res.status(409).json({ error: 'This run has not finished yet.' });
+    }
+    rec.review = {
+      decision: decision,
+      note: note || null,
+      by: req.user.email,
+      byName: req.user.name,
+      at: new Date().toISOString()
+    };
+    await saveRecord(rec);
+    res.json({ review: rec.review, row: toRow(rec) });
+  } catch (err) {
+    sendError(res, err);
   }
 });
 
