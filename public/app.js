@@ -17,8 +17,13 @@
 
   function showError(message) {
     var box = $('#submit-error');
-    box.textContent = message;
+    box.innerHTML = message ? '<span class="glyph">!</span> ' + esc(message) : '';
     box.hidden = !message;
+    if (message) {
+      // The button sits below the fold on a short window, so a failure that
+      // renders quietly reads as "nothing happened".
+      box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
   }
 
   function setBusy(busy, label) {
@@ -180,7 +185,12 @@
       .catch(function (err) {
         if (ATV.onAuthLoss(err)) return;
         setBusy(false);
-        showError(err.message);
+        showError(
+          err.message +
+            (err.status === 401 || err.status === 503
+              ? ' Nothing was submitted, so nothing is running.'
+              : '')
+        );
       });
   }
 
