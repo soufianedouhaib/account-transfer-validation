@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>History, Account Transfer Validation</title>
+    <link rel="icon" href="/logo.png" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar" id="topbar"></header>
+
+    <main class="page" id="main" hidden>
+      <div class="page-head">
+        <h1>Validation history</h1>
+        <p id="page-sub">Every packet submitted through this console, newest first.</p>
+      </div>
+
+      <section class="card">
+        <div class="toolbar">
+          <select id="filter-outcome" aria-label="Filter by outcome">
+            <option value="">All outcomes</option>
+            <option value="IGO">In good order</option>
+            <option value="NIGO">Not in good order</option>
+            <option value="UNFINISHED">Did not finish</option>
+          </select>
+          <input type="search" id="filter-text" placeholder="Search runs" />
+          <span class="spacer"></span>
+          <span class="pill" id="count-pill">0 runs</span>
+        </div>
+        <div id="history-body"><div class="skeleton">Loading history</div></div>
+      </section>
+    </main>
+
+    <footer class="footer" id="footer"></footer>
+
+    <script src="/common.js"></script>
+    <script src="/history.js"></script>
+  </body>
+</html>
