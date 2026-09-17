@@ -16,8 +16,9 @@ server.js          Express app, exports `app`. Holds the key. All /api routes.
 api/index.js       module.exports = require('../server')   <- the Vercel entry point
 lib/opus.js        the only file that calls Opus. Variable ids live here as constants.
 lib/store.js       optional history storage, KV REST or Redis over TCP
-lib/auth.js        the five accounts, roles, and the signed session cookie
-public/            six pages, one script per page, one stylesheet
+lib/auth.js        the seven demo accounts, roles, and the signed session cookie
+public/            eight pages, one script per page, one stylesheet
+public/samples/    three sample packets, so a tester needs no file of their own
 vercel.json        rewrites /api/(.*) to /api/index.js
 ```
 
@@ -25,22 +26,24 @@ vercel.json        rewrites /api/(.*) to /api/index.js
 
 | Role | Sign in at | Can |
 |---|---|---|
-| Advisor | `/login.html` | Submit a packet, see and open only their own runs |
-| Reviewer | `/review-login.html` | Work the queue of every finished run, open any case, read the packet, approve, send back or reject with a note |
-| Administrator | `/review-login.html` | Everything a reviewer can do, and submit packets too |
+| Employee | `/login.html` | Submit a packet, see and open only their own runs |
+| Manager | `/review-login.html` | Work the transfer requests, open any case, read the packet, approve, send back or reject with a note, filter by period, export CSV, see the report |
+| Administrator | `/review-login.html` | Everything a manager can do, submit packets, and see the workflow, deployment and account settings |
 
-Accounts for the testing phase, seeded in `lib/auth.js`:
+Seven demo accounts, seeded in `lib/auth.js`:
 
-| Email | Role | Password |
-|---|---|---|
-| advisor1@aaico.demo | advisor | Advisor1-2026 |
-| advisor2@aaico.demo | advisor | Advisor2-2026 |
-| reviewer1@aaico.demo | reviewer | Review1-2026 |
-| reviewer2@aaico.demo | reviewer | Review2-2026 |
-| soufiane.douhaib@aaico.com | admin | Admin-2026 |
+| Name | Email | Role | Password |
+|---|---|---|---|
+| Amelia Grant | employee1@aaico.demo | Employee | Employee1-2026 |
+| Daniel Osei | employee2@aaico.demo | Employee | Employee2-2026 |
+| Priya Raman | employee3@aaico.demo | Employee | Employee3-2026 |
+| Tomas Wexler | employee4@aaico.demo | Employee | Employee4-2026 |
+| Hana Suzuki | manager1@aaico.demo | Manager | Manager1-2026 |
+| Marcus Bell | manager2@aaico.demo | Manager | Manager2-2026 |
+| Nadia Farouk | admin@aaico.demo | Administrator | Admin-2026 |
 
-The two advisor logins are printed on the advisor sign in page so anyone can try
-the console. Reviewer and admin credentials are never shown on any page.
+Each door lists its own accounts, and one click fills the email and the
+password. The employee door never shows a manager or admin account.
 
 Replace the whole set without touching code by setting `APP_USERS`:
 
@@ -116,6 +119,41 @@ are exercised in the local harness.
 npm install
 OPUS_SERVICE_KEY=... npm start     # http://localhost:3000
 ```
+
+## What each screen does
+
+- **New validation**, employees and the admin. Drop a packet in, or load one of
+  three sample packets with one click: an unsigned IRA at $95,000, a signed
+  joint account at $1,284,500, and an account in a second currency at
+  AED 4,120,000.
+- **Transfer requests**, managers and the admin. Every finished run, filtered by
+  this month, last month, a named month or a custom range, with a CSV export
+  that honours the same range.
+- **All runs** and **My runs**. The same list scoped to the person looking.
+- **Report**, managers and the admin. Approved against rejected amounts by month,
+  with the same period controls, a legend, direct labels, a tooltip on every
+  bar and the same figures as a table. Amounts are grouped by the currency they
+  were printed in; adding dirhams to dollars would be a lie, so the chart shows
+  one currency at a time and offers a switch when more than one is present.
+- **Settings**. Theme and the support contact for everyone who can reach it;
+  the workflow, deployment and account roster for the admin only.
+
+### The chart palette
+
+Two series, so two categorical hues: the brand blue for approved, orange for
+rejected. Never green against red, which is the pair most people with colour
+vision deficiency cannot separate, on a chart that is about money. The pair was
+checked with the data visualisation validator and passes the lightness band,
+chroma floor, colour vision separation and contrast in both light and dark. Dark
+mode uses a slightly deeper blue, because the brand blue is too light to sit on
+a dark card.
+
+### Contacting Opus support
+
+Every screen has a support link, and the failure states repeat it. The email
+opens with the workflow id in the subject, and the body prefilled with the case
+id, the run status and the time. Set `SUPPORT_EMAIL` to change the address; it
+defaults to `support@opus.com`.
 
 ## Review and privacy behaviour
 

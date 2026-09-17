@@ -152,6 +152,16 @@ function sendError(res, err) {
   });
 }
 
+/* The support contact is one object so every screen writes the same subject:
+   the workflow id, always, because that is what Opus support asks for. */
+function support() {
+  return {
+    email: process.env.SUPPORT_EMAIL || 'support@opus.com',
+    workflowId: opus.WORKFLOW_ID,
+    subjectPrefix: 'Opus workflow ' + opus.WORKFLOW_ID
+  };
+}
+
 /* ------------------------------------------------------------------ *
  * Session                                                             *
  * ------------------------------------------------------------------ */
@@ -166,13 +176,13 @@ app.post('/api/login', function (req, res) {
   // to the right door rather than silently signed in to a screen they cannot use.
   if (body.expect === 'reviewer' && !auth.canReview(user)) {
     return res.status(403).json({
-      error: 'That account is an advisor account. Use the advisor sign in.',
+      error: 'That is an employee account. Use the employee sign in.',
       redirect: '/login.html'
     });
   }
   if (body.expect === 'advisor' && auth.canReview(user) && user.role !== 'admin') {
     return res.status(403).json({
-      error: 'That account is a reviewer account. Use the reviewer sign in.',
+      error: 'That is a manager account. Use the manager sign in.',
       redirect: '/review-login.html'
     });
   }
@@ -204,7 +214,11 @@ app.get('/api/me', function (req, res) {
     appName: 'Account Transfer Validation',
     historyEnabled: store.configured,
     configured: opus.missingEnv().length === 0,
-    demoAccounts: auth.usingDefaultAccounts ? auth.demoAdvisors : []
+    demoAccounts: {
+      advisor: auth.demoAccountsFor('advisor'),
+      reviewer: auth.demoAccountsFor('reviewer')
+    },
+    support: support()
   });
 });
 
@@ -256,7 +270,7 @@ app.get('/api/health', async function (req, res) {
 function requireSubmitter(req, res, next) {
   if (!req.user) return res.status(401).json({ error: 'Sign in to continue.' });
   if (req.user.role === 'reviewer') {
-    return res.status(403).json({ error: 'Reviewer accounts do not submit packets.' });
+    return res.status(403).json({ error: 'Manager accounts do not submit packets.' });
   }
   next();
 }
@@ -500,6 +514,24 @@ app.get('/api/case/:caseId/document', auth.requireUser, async function (req, res
  * Lists                                                               *
  * ------------------------------------------------------------------ */
 
+/* A range is inclusive of both ends, and an absent end means open ended.
+   Everything is compared on the submission timestamp. */
+function withinRange(row, from, to) {
+  if (!row || !row.createdAt) return !from && !to;
+  const when = String(row.createdAt);
+  if (from && when < from) return false;
+  if (to && when > to + 'T23:59:59.999Z') return false;
+  return true;
+}
+
+function rangeFromQuery(query) {
+  const clean = function (v) {
+    const text = String(v || '').trim();
+    return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : '';
+  };
+  return { from: clean(query.from), to: clean(query.to) };
+}
+
 async function rowsFor(ids) {
   const rows = [];
   for (let i = 0; i < ids.length; i++) {
@@ -523,10 +555,15 @@ app.get('/api/history', auth.requireUser, async function (req, res) {
   const everything = auth.canReview(req.user) && req.query.scope !== 'mine';
   try {
     const ids = await store.listIds(everything ? LIST_KEY : OWNER_KEY(req.user.email), limit);
+    const range = rangeFromQuery(req.query);
+    const rows = (await rowsFor(ids)).filter(function (row) {
+      return withinRange(row, range.from, range.to);
+    });
     res.json({
       configured: true,
       scope: everything ? 'all' : 'mine',
-      rows: await rowsFor(ids)
+      range: range,
+      rows: rows
     });
   } catch (err) {
     res.json({ configured: true, rows: [], note: 'History is unavailable: ' + err.message });
@@ -544,10 +581,11 @@ app.get('/api/queue', auth.requireReviewer, async function (req, res) {
   }
   try {
     const ids = await store.listIds(LIST_KEY, HISTORY_CAP);
+    const range = rangeFromQuery(req.query);
     const rows = (await rowsFor(ids)).filter(function (row) {
-      return row.status === 'COMPLETED' || row.failure;
+      return (row.status === 'COMPLETED' || row.failure) && withinRange(row, range.from, range.to);
     });
-    res.json({ configured: true, rows: rows });
+    res.json({ configured: true, range: range, rows: rows });
   } catch (err) {
     res.json({ configured: true, rows: [], note: 'The queue is unavailable: ' + err.message });
   }
@@ -590,6 +628,186 @@ app.post('/api/case/:caseId/review', auth.requireReviewer, async function (req, 
   } catch (err) {
     sendError(res, err);
   }
+});
+
+/* ------------------------------------------------------------------ *
+ * Reporting and export, managers and the admin                        *
+ * ------------------------------------------------------------------ */
+
+function csvCell(value) {
+  if (value === null || value === undefined) return '';
+  const text = String(value);
+  return /[",\n]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
+}
+
+const CSV_COLUMNS = [
+  ['caseId', 'Case id'],
+  ['createdAt', 'Submitted at'],
+  ['submittedByName', 'Submitted by'],
+  ['submittedBy', 'Submitted by email'],
+  ['title', 'Reference'],
+  ['fileName', 'File'],
+  ['clientName', 'Client'],
+  ['contraFirm', 'Contra firm'],
+  ['accountType', 'Account type'],
+  ['submittedValue', 'Value as printed'],
+  ['valueAmount', 'Amount'],
+  ['valueCurrency', 'Currency'],
+  ['status', 'Run status'],
+  ['verdict', 'Workflow verdict'],
+  ['totalIssues', 'Issues'],
+  ['lowConfidence', 'Low confidence reads'],
+  ['reviewState', 'Review decision'],
+  ['reviewedByName', 'Decided by'],
+  ['reviewedAt', 'Decided at'],
+  ['reviewNote', 'Decision note']
+];
+
+/** The same rows the queue shows, as a spreadsheet, honouring the same range. */
+app.get('/api/export.csv', auth.requireReviewer, async function (req, res) {
+  if (!store.configured) {
+    return res.status(503).json({ error: 'Export needs run history. Connect a storage database and redeploy.' });
+  }
+  try {
+    const range = rangeFromQuery(req.query);
+    const ids = await store.listIds(LIST_KEY, HISTORY_CAP);
+    const rows = (await rowsFor(ids)).filter(function (row) {
+      return withinRange(row, range.from, range.to);
+    });
+    const header = CSV_COLUMNS.map(function (c) {
+      return csvCell(c[1]);
+    }).join(',');
+    const body = rows
+      .map(function (row) {
+        return CSV_COLUMNS.map(function (c) {
+          return csvCell(row[c[0]]);
+        }).join(',');
+      })
+      .join('\n');
+    const stamp = (range.from || 'all') + '-to-' + (range.to || 'now');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="transfer-validations-' + stamp + '.csv"');
+    // The BOM keeps Excel from mangling names with accents.
+    res.send('\uFEFF' + header + '\n' + body + '\n');
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+/**
+ * Monthly totals for the report: how much was approved against how much was
+ * rejected. Amounts are grouped by the currency they were printed in, because
+ * adding dirhams to dollars would be a lie.
+ */
+app.get('/api/report', auth.requireReviewer, async function (req, res) {
+  if (!store.configured) {
+    return res.json({ configured: false, months: [], currencies: [], note: 'Reporting needs run history.' });
+  }
+  try {
+    const range = rangeFromQuery(req.query);
+    const ids = await store.listIds(LIST_KEY, HISTORY_CAP);
+    const rows = (await rowsFor(ids)).filter(function (row) {
+      return withinRange(row, range.from, range.to);
+    });
+
+    const currencies = {};
+    rows.forEach(function (row) {
+      if (row.valueAmount !== null && row.valueAmount !== undefined) {
+        const key = row.valueCurrency || 'unlabelled';
+        currencies[key] = (currencies[key] || 0) + 1;
+      }
+    });
+    const currencyList = Object.keys(currencies).sort(function (a, b) {
+      return currencies[b] - currencies[a];
+    });
+    const currency = String(req.query.currency || currencyList[0] || '');
+
+    const buckets = {};
+    const blank = function () {
+      return {
+        approved: { amount: 0, count: 0 },
+        rejected: { amount: 0, count: 0 },
+        returned: { amount: 0, count: 0 },
+        pending: { amount: 0, count: 0 },
+        unfinished: { amount: 0, count: 0 }
+      };
+    };
+    rows.forEach(function (row) {
+      if (!row.createdAt) return;
+      const month = String(row.createdAt).slice(0, 7);
+      if (!buckets[month]) buckets[month] = blank();
+      // A run that never produced a verdict is counted apart from one that is
+       // waiting for a manager, so this page and the queue agree.
+      const state = row.status === 'COMPLETED' ? row.reviewState || 'pending' : 'unfinished';
+      const target = buckets[month][state] || buckets[month].pending;
+      target.count += 1;
+      const rowCurrency = row.valueCurrency || 'unlabelled';
+      if (typeof row.valueAmount === 'number' && (!currency || rowCurrency === currency)) {
+        target.amount += row.valueAmount;
+      }
+    });
+
+    const months = Object.keys(buckets)
+      .sort()
+      .map(function (key) {
+        return Object.assign({ key: key }, buckets[key]);
+      });
+
+    const totals = months.reduce(
+      function (acc, m) {
+        ['approved', 'rejected', 'returned', 'pending', 'unfinished'].forEach(function (k) {
+          acc[k].amount += m[k].amount;
+          acc[k].count += m[k].count;
+        });
+        return acc;
+      },
+      blank()
+    );
+
+    res.json({
+      configured: true,
+      range: range,
+      currency: currency,
+      currencies: currencyList,
+      months: months,
+      totals: totals,
+      runs: rows.length
+    });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+/** What the console is pointed at. Read only: nothing here needs setting up. */
+app.get('/api/settings', auth.requireReviewer, async function (req, res) {
+  const storage = await store.ping();
+  res.json({
+    workflow: {
+      id: opus.WORKFLOW_ID,
+      baseUrl: opus.BASE,
+      inputVariable: opus.INPUT_SUBMITTED_DOCS,
+      outputVariables: [opus.OUTPUT_RESULT, opus.OUTPUT_EXPLANATION, opus.OUTPUT_ERROR]
+    },
+    serviceKey: { configured: opus.missingEnv().length === 0 },
+    history: {
+      configured: store.configured,
+      mode: store.mode,
+      reachable: storage.ok,
+      reason: storage.reason || null
+    },
+    accounts: {
+      count: auth.accountCount,
+      usingDemoAccounts: auth.usingDefaultAccounts,
+      sessionSecretSet: Boolean(process.env.SESSION_SECRET),
+      list: auth.canReview(req.user) && req.user.role === 'admin' ? auth.roster() : []
+    },
+    support: support(),
+    build: {
+      target: process.env.VERCEL_ENV || 'local',
+      deployment: process.env.VERCEL_URL || null,
+      commit: (process.env.VERCEL_GIT_COMMIT_SHA || '').slice(0, 7) || null
+    }
+  });
 });
 
 app.use('/api', function (req, res) {
