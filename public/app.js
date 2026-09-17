@@ -40,10 +40,77 @@
     $('#file-size').textContent = humanSize(file.size);
     $('#file-chip').hidden = false;
     $('#dropzone').hidden = true;
+    $('#samples-lead').textContent = 'Or swap in a different sample.';
     $('#submit-btn').disabled = false;
     if (!$('#title').value) {
       $('#title').value = file.name.replace(/\.[^.]+$/, '');
     }
+  }
+
+  /* Sample packets live with the app so anyone can try it end to end. Each
+     one is fetched and handed to the form exactly as a chosen file would be. */
+  var SAMPLES = [
+    {
+      file: '/samples/packet-ira.pdf',
+      name: 'Karim, Sterling Financial',
+      note: 'Traditional IRA, unsigned and missing an election',
+      amount: '$95,000.00'
+    },
+    {
+      file: '/samples/packet-joint.pdf',
+      name: 'Ellison-Vandermeer, Harbor Trust',
+      note: 'Joint account, signed, Medallion affixed',
+      amount: '$1,284,500.00'
+    },
+    {
+      file: '/samples/packet-international.pdf',
+      name: 'Al Mheiri, Gulf Cooperative',
+      note: 'Individual account in a second currency',
+      amount: 'AED 4,120,000.00'
+    }
+  ];
+
+  function renderSamples() {
+    $('#samples').innerHTML = SAMPLES.map(function (sample, i) {
+      return (
+        '<button type="button" class="sample" data-i="' +
+        i +
+        '"><span class="pill">Sample</span><span class="what"><b>' +
+        esc(sample.name) +
+        '</b><span>' +
+        esc(sample.note) +
+        '</span></span><span class="amount">' +
+        esc(sample.amount) +
+        '</span></button>'
+      );
+    }).join('');
+
+    ATV.$$('.sample').forEach(function (button) {
+      button.addEventListener('click', function () {
+        var sample = SAMPLES[Number(button.getAttribute('data-i'))];
+        if (!sample) return;
+        button.disabled = true;
+        fetch(sample.file)
+          .then(function (res) {
+            if (!res.ok) throw new Error('The sample packet could not be loaded.');
+            return res.blob();
+          })
+          .then(function (blob) {
+            var file = new File([blob], sample.file.split('/').pop(), { type: 'application/pdf' });
+            var transfer = new DataTransfer();
+            transfer.items.add(file);
+            $('#file-input').files = transfer.files;
+            pick(file);
+            $('#title').value = sample.name;
+          })
+          .catch(function (err) {
+            showError(err.message);
+          })
+          .then(function () {
+            button.disabled = false;
+          });
+      });
+    });
   }
 
   function clearFile() {
@@ -51,6 +118,7 @@
     $('#file-input').value = '';
     $('#file-chip').hidden = true;
     $('#dropzone').hidden = false;
+    $('#samples-lead').textContent = 'No packet to hand? Load one of these samples and run it.';
     $('#submit-btn').disabled = true;
   }
 
@@ -227,6 +295,7 @@
         .catch(function () {});
     }
 
+    renderSamples();
     $('#file-clear').addEventListener('click', clearFile);
     $('#submit-form').addEventListener('submit', submit);
 

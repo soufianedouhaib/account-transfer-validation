@@ -18,21 +18,18 @@
 
       <div id="decision-slot"></div>
 
-      <div id="running" class="card" hidden>
-        <div class="progress-wrap">
-          <div class="spinner"></div>
-          <div>
-            <div style="font-weight: 500" id="running-label">Running the validation</div>
-            <div class="card-sub" style="margin: 2px 0 0" id="running-note">
-              Extracting the documents and running the checks. This usually takes a minute or two.
-            </div>
-          </div>
-        </div>
+      <div id="running" class="card waiting" hidden>
+        <div class="spinner"></div>
+        <h2 id="running-label">Checking your packet</h2>
+        <p id="running-note">
+          Reading the documents and running the checks. This usually takes a minute or two, and the
+          page updates itself.
+        </p>
         <div class="bar"><i></i></div>
         <div class="steps">
           <span class="step">Reading the packet</span>
           <span class="step">Extracting the record</span>
-          <span class="step">Consistency, completeness, contra firm fit</span>
+          <span class="step">Running the three checks</span>
           <span class="step">Assembling the decision</span>
         </div>
       </div>

@@ -184,76 +184,248 @@ pre,
   font-size: 12.5px;
 }
 
-/* ---------------------------------- nav --------------------------------- */
+/* ---------------------------------- rail -------------------------------- *
+ * The navigation is a left rail that collapses to icons. The pages keep the
+ * same three elements, so the shell is laid out here rather than in markup.
+ * -------------------------------------------------------------------------- */
 
-.topbar {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  background: var(--surface);
-  border-bottom: 1px solid var(--line);
+body.has-sidebar {
+  display: grid;
+  grid-template-columns: var(--rail) 1fr;
+  grid-template-rows: 1fr auto;
+  min-height: 100vh;
 }
 
-.topbar-inner {
-  max-width: 1120px;
-  margin: 0 auto;
-  padding: 0 24px;
-  height: 62px;
+:root {
+  --rail: 236px;
+}
+
+body.side-collapsed {
+  --rail: 68px;
+}
+
+body.has-sidebar > .sidebar {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+}
+
+body.has-sidebar > .page {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+body.has-sidebar > .footer {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+.sidebar {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px 12px;
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+  overflow: hidden;
+  z-index: 20;
+}
+
+.sidebar.is-empty {
+  display: none;
+}
+
+.side-top {
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: 8px;
+  padding: 0 4px 6px;
 }
 
 .brand-lockup {
   display: flex;
   align-items: center;
-  gap: 12px;
+  min-width: 0;
   text-decoration: none;
   color: inherit;
 }
 
 .brand-lockup img {
-  height: 20px;
+  height: 19px;
   width: auto;
   display: block;
   filter: var(--logo-filter);
 }
 
-.brand-divider {
-  width: 1px;
-  height: 20px;
-  background: var(--line-strong);
+.side-toggle {
+  margin-left: auto;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  transition: transform 0.15s ease;
 }
 
-.brand-app {
-  font-size: 13.5px;
+.side-toggle:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+body:not(.side-collapsed) .side-toggle {
+  transform: rotate(180deg);
+}
+
+.side-app {
+  padding: 0 8px 12px;
+  font-size: 12px;
   color: var(--muted);
+  line-height: 1.3;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 10px;
+}
+
+.side-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.side-nav a,
+.side-support,
+.side-out {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 9px 10px;
+  border-radius: 9px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 13.5px;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+  width: 100%;
+  text-align: left;
+}
+
+.side-nav a:hover,
+.side-support:hover,
+.side-out:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+.side-nav a[aria-current='page'] {
+  background: var(--brand-soft);
+  color: var(--brand-ink);
+  font-weight: 500;
+}
+
+.ico {
+  width: 19px;
+  height: 19px;
+  flex: 0 0 auto;
+}
+
+.side-foot {
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.side-account {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 9px 10px;
+  min-width: 0;
+}
+
+.side-account .avatar {
+  width: 19px;
+  height: 19px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--brand);
+  color: var(--on-brand);
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.side-account .label {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+  min-width: 0;
+}
+
+.account-name {
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.nav-links {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 4px;
+.account-role {
+  font-size: 11.5px;
+  color: var(--muted);
 }
 
-.nav-links a {
-  color: var(--ink-2);
-  text-decoration: none;
-  font-size: 13.5px;
-  padding: 7px 12px;
-  border-radius: 8px;
+/* Collapsed: icons only, and nothing reflows when the labels go. */
+body.side-collapsed .label,
+body.side-collapsed .side-app {
+  display: none;
 }
 
-.nav-links a:hover {
-  background: var(--surface-2);
+/* Collapsed keeps the mark, cropped out of the lockup, so the product is
+   still identifiable with the labels gone. */
+body.side-collapsed .brand-lockup {
+  width: 22px;
+  overflow: hidden;
 }
 
-.nav-links a[aria-current='page'] {
-  color: var(--brand-ink);
-  background: var(--brand-soft);
-  font-weight: 500;
+body.side-collapsed .brand-lockup img {
+  max-width: none;
+}
+
+body.side-collapsed .sidebar {
+  padding: 16px 10px;
+  align-items: stretch;
+}
+
+body.side-collapsed .side-top {
+  padding-bottom: 10px;
+}
+
+body.side-collapsed .side-toggle {
+  margin: 0 auto;
+}
+
+body.side-collapsed .side-nav a,
+body.side-collapsed .side-support,
+body.side-collapsed .side-out,
+body.side-collapsed .side-account {
+  justify-content: center;
+  padding: 10px 0;
 }
 
 /* -------------------------------- layout -------------------------------- */
@@ -408,7 +580,7 @@ button:focus-visible,
 
 .btn[disabled] {
   background: var(--surface-3);
-  color: var(--muted);
+  color: var(--ink-2);
   border-color: var(--line-strong);
   cursor: not-allowed;
 }
@@ -1359,5 +1531,405 @@ details.raw pre {
 @media (prefers-reduced-motion: reduce) {
   :root {
     scroll-behavior: auto;
+  }
+}
+
+
+/* ------------------------------ the rail, phones ------------------------ */
+
+@media (max-width: 860px) {
+  body.has-sidebar {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr auto;
+  }
+
+  body.has-sidebar > .sidebar {
+    grid-column: 1;
+    grid-row: 1;
+    position: sticky;
+    top: 0;
+    height: auto;
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 10px 14px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  body.has-sidebar > .page {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  body.has-sidebar > .footer {
+    grid-column: 1;
+    grid-row: 3;
+  }
+
+  /* Collapsed on a phone means the menu is closed, not narrow. */
+  .side-top {
+    order: 1;
+    padding: 0;
+    flex: 1 1 auto;
+  }
+
+  .side-app {
+    display: none;
+  }
+
+  .side-nav {
+    order: 3;
+    flex: 1 1 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 4px;
+    border-top: 1px solid var(--line);
+    padding-top: 8px;
+    margin-top: 4px;
+  }
+
+  .side-foot {
+    order: 4;
+    flex: 1 1 100%;
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+    margin-top: 0;
+  }
+
+  .side-foot .side-support .label {
+    display: none;
+  }
+
+  .side-out {
+    width: auto;
+    margin-left: auto;
+  }
+
+  .side-support {
+    width: auto;
+  }
+
+  body.side-collapsed .side-nav,
+  body.side-collapsed .side-foot {
+    display: none;
+  }
+
+  body.side-collapsed .label,
+  body.side-collapsed .brand-lockup {
+    display: flex;
+  }
+
+  body.side-collapsed .sidebar {
+    padding: 10px 14px;
+  }
+
+  body.side-collapsed .side-toggle {
+    margin: 0 0 0 auto;
+  }
+
+  body:not(.side-collapsed) .side-toggle {
+    transform: rotate(90deg);
+  }
+
+  body.side-collapsed .side-toggle {
+    transform: rotate(-90deg);
+  }
+}
+
+/* ------------------------------ demo accounts --------------------------- */
+
+.demo-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.demo-account {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  color: var(--ink);
+}
+
+.demo-account:hover {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+}
+
+.demo-account .who {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+  min-width: 0;
+}
+
+.demo-account .who b {
+  font-weight: 500;
+}
+
+.demo-account .who span {
+  color: var(--muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.demo-account .pill {
+  margin-left: auto;
+}
+
+/* ------------------------------ sample packets -------------------------- */
+
+.samples {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.sample {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font: inherit;
+  font-size: 13.5px;
+  text-align: left;
+  cursor: pointer;
+  color: var(--ink);
+  width: 100%;
+}
+
+.sample:hover {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+}
+
+.sample .what {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+  min-width: 0;
+}
+
+.sample .what span {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.sample .amount {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* ------------------------------ waiting screen -------------------------- */
+
+.waiting {
+  max-width: 560px;
+  margin: 24px auto;
+  text-align: center;
+  padding: 40px 28px;
+}
+
+.waiting .spinner {
+  margin: 0 auto 18px;
+  width: 34px;
+  height: 34px;
+}
+
+.waiting h2 {
+  font-size: 21px;
+  margin-bottom: 8px;
+}
+
+.waiting p {
+  color: var(--muted);
+  max-width: 46ch;
+  margin: 0 auto;
+}
+
+.waiting .bar {
+  max-width: 320px;
+  margin: 22px auto 0;
+}
+
+.waiting .steps {
+  justify-content: center;
+}
+
+/* -------------------------------- support ------------------------------- */
+
+.support-card {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.support-card .ico {
+  width: 22px;
+  height: 22px;
+  color: var(--brand-ink);
+  margin-top: 2px;
+}
+
+/* --------------------------------- chart -------------------------------- */
+
+/* Two series, validated for colour vision deficiency against both surfaces.
+   Light uses the brand blue itself; dark uses the step that clears the dark
+   lightness band, since the brand blue is too light against a dark card. */
+.viz-root {
+  --series-approved: #387bf0;
+  --series-rejected: #eb6834;
+  --grid: var(--line);
+}
+
+:root:not([data-theme='light']) .viz-root {
+  --series-approved: #3987e5;
+  --series-rejected: #d95926;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .viz-root {
+    --series-approved: #3987e5;
+    --series-rejected: #d95926;
+  }
+}
+
+:root[data-theme='dark'] .viz-root {
+  --series-approved: #3987e5;
+  --series-rejected: #d95926;
+}
+
+.chart {
+  width: 100%;
+  height: auto;
+  display: block;
+  overflow: visible;
+}
+
+.chart .grid-line {
+  stroke: var(--grid);
+  stroke-width: 1;
+}
+
+.chart .axis-text {
+  fill: var(--muted);
+  font-size: 11px;
+}
+
+.chart .value-text {
+  fill: var(--ink-2);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart .bar-approved {
+  fill: var(--series-approved);
+}
+
+.chart .bar-rejected {
+  fill: var(--series-rejected);
+}
+
+.chart rect.hit {
+  fill: transparent;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.legend i {
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+  display: inline-block;
+  margin-right: 7px;
+  vertical-align: -1px;
+}
+
+.legend .swatch-approved {
+  background: var(--series-approved);
+}
+
+.legend .swatch-rejected {
+  background: var(--series-rejected);
+}
+
+.chart-tip {
+  position: fixed;
+  z-index: 40;
+  pointer-events: none;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  padding: 8px 10px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.chart-tip b {
+  display: block;
+  margin-bottom: 2px;
+}
+
+/* ------------------------------ settings rows --------------------------- */
+
+.kv {
+  display: grid;
+  grid-template-columns: 210px 1fr;
+  gap: 10px 16px;
+  font-size: 14px;
+}
+
+.kv dt {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.kv dd {
+  margin: 0;
+  word-break: break-word;
+}
+
+.kv dd .mono,
+.support-card .mono {
+  white-space: nowrap;
+  overflow-x: auto;
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: bottom;
+}
+
+@media (max-width: 720px) {
+  .kv {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+  .kv dd {
+    margin-bottom: 10px;
   }
 }

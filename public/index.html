@@ -43,7 +43,6 @@
             />
 
             <div id="file-chip" class="file-chip" hidden style="margin-top: 14px">
-              <span class="pill"><span class="glyph">▪</span>File</span>
               <span class="name" id="file-name"></span>
               <span class="size" id="file-size"></span>
               <button type="button" class="btn btn-quiet btn-small" id="file-clear">Remove</button>
@@ -51,8 +50,13 @@
 
             <label class="field" style="margin-top: 16px">
               <span>Reference for this run, optional</span>
-              <input type="text" id="title" placeholder="For example: Karim, Sterling Financial" />
+              <input type="text" id="title" placeholder="A name you will recognise in the list" />
             </label>
+
+            <div class="card-sub" style="margin: 18px 0 0" id="samples-lead">
+              No packet to hand? Load one of these samples and run it.
+            </div>
+            <div class="samples" id="samples"></div>
 
             <div id="resubmit-note" class="notice notice-info" hidden>
               Resubmitting a corrected packet. Attach the updated file and run it again.

@@ -60,24 +60,38 @@
     function (me) {
       $('#signin-form').addEventListener('submit', submit);
 
-      // While the built in accounts are still in use, the advisor door shows
-      // the demo logins so anyone can try the console. Reviewer and admin
-      // credentials are never printed on a page.
-      if (mode === 'advisor' && me.demoAccounts && me.demoAccounts.length) {
-        $('#demo-box').innerHTML =
-          '<strong>Demo accounts for testing</strong><br>' +
-          me.demoAccounts
-            .map(function (a) {
-              return esc(a.email) + ' with password ' + esc(a.password);
-            })
-            .join('<br>');
-        $('#demo-box').hidden = false;
-      }
-      if (mode === 'reviewer' && me.demoAccounts && me.demoAccounts.length) {
-        $('#demo-box').innerHTML =
-          'Reviewer credentials are issued by your administrator and are not shown here.';
-        $('#demo-box').hidden = false;
-      }
+      /* Every account in this build is a demo account. Each door lists its
+         own, and one click fills the form so nobody types a test password. */
+      var accounts = (me.demoAccounts && me.demoAccounts[mode]) || [];
+      if (!accounts.length) return;
+
+      $('#demo-title').hidden = false;
+      $('#demo-list').innerHTML = accounts
+        .map(function (a, i) {
+          return (
+            '<button type="button" class="demo-account" data-i="' +
+            i +
+            '"><span class="who"><b>' +
+            esc(a.name) +
+            '</b><span>' +
+            esc(a.email) +
+            '</span></span><span class="pill">' +
+            esc(a.role) +
+            '</span></button>'
+          );
+        })
+        .join('');
+
+      ATV.$$('.demo-account').forEach(function (button) {
+        button.addEventListener('click', function () {
+          var picked = accounts[Number(button.getAttribute('data-i'))];
+          if (!picked) return;
+          $('#email').value = picked.email;
+          $('#password').value = picked.password;
+          showError('');
+          $('#signin-btn').focus();
+        });
+      });
     },
     { need: 'public' }
   );

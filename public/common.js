@@ -5,6 +5,16 @@
 (function (global) {
   'use strict';
 
+  /* The theme choice is this browser's, so apply it before anything paints. */
+  try {
+    var savedTheme = localStorage.getItem('atv-theme');
+    if (savedTheme === 'light' || savedTheme === 'dark') {
+      document.documentElement.setAttribute('data-theme', savedTheme);
+    }
+  } catch (e) {
+    /* a private window simply follows the device */
+  }
+
   function $(sel, root) {
     return (root || document).querySelector(sel);
   }
@@ -62,70 +72,190 @@
     });
   }
 
+  /* ------------------------------ the rail ------------------------------ */
+
+  var ICONS = {
+    submit:
+      '<path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5"/><path d="M4 16v2.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V16"/>',
+    runs: '<path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>',
+    queue:
+      '<path d="M3 13h4l2 3h6l2-3h4"/><path d="M5 5h14l2 8v5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-5z"/>',
+    report: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+    settings:
+      '<circle cx="12" cy="12" r="3.2"/><path d="M19.4 14.5a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5v.2a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1h.2a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/>',
+    support: '<path d="M3 7l9 6 9-6"/><rect x="3" y="5" width="18" height="14" rx="2"/>',
+    signout: '<path d="M10 4H5.5A1.5 1.5 0 0 0 4 5.5v13A1.5 1.5 0 0 0 5.5 20H10"/><path d="M15 8l4 4-4 4M19 12H9"/>',
+    menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
+    chevron: '<path d="M9 6l6 6-6 6"/>'
+  };
+
+  function icon(name) {
+    return (
+      '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" ' +
+      'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      (ICONS[name] || '') +
+      '</svg>'
+    );
+  }
+
   function navFor(me) {
     if (!me || !me.signedIn) return [];
     var links = [];
-    if (me.canSubmit) links.push({ href: '/', label: 'New validation', match: ['/', '/index.html'] });
+    if (me.canSubmit) {
+      links.push({ href: '/', label: 'New validation', icon: 'submit', match: ['/', '/index.html'] });
+    }
     if (me.canReview) {
-      links.push({ href: '/review.html', label: 'Review queue', match: ['/review.html'] });
-      links.push({ href: '/history.html', label: 'All runs', match: ['/history.html'] });
-    } else {
-      links.push({ href: '/history.html', label: 'My runs', match: ['/history.html'] });
+      links.push({
+        href: '/review.html',
+        label: 'Transfer requests',
+        icon: 'queue',
+        match: ['/review.html']
+      });
+    }
+    links.push({
+      href: '/history.html',
+      label: me.canReview ? 'All runs' : 'My runs',
+      icon: 'runs',
+      match: ['/history.html']
+    });
+    if (me.canReview) {
+      links.push({ href: '/report.html', label: 'Report', icon: 'report', match: ['/report.html'] });
+      links.push({
+        href: '/settings.html',
+        label: 'Settings',
+        icon: 'settings',
+        match: ['/settings.html']
+      });
     }
     return links;
+  }
+
+  /* One mailto for the whole app: the subject always carries the workflow id,
+     which is the first thing Opus support asks for. */
+  function supportHref(me, context) {
+    var s = (me && me.support) || {};
+    var subject = (s.subjectPrefix || 'Opus workflow') + (context && context.what ? ', ' + context.what : '');
+    var lines = [
+      'Workflow id: ' + (s.workflowId || 'unknown'),
+      context && context.caseId ? 'Case id: ' + context.caseId : '',
+      context && context.status ? 'Run status: ' + context.status : '',
+      'Reported by: ' + ((me && me.email) || 'unknown'),
+      'When: ' + new Date().toISOString(),
+      '',
+      'What happened:',
+      ''
+    ].filter(Boolean);
+    return (
+      'mailto:' +
+      (s.email || 'support@opus.com') +
+      '?subject=' +
+      encodeURIComponent(subject) +
+      '&body=' +
+      encodeURIComponent(lines.join('\n'))
+    );
+  }
+
+  var SIDE_KEY = 'atv-sidebar';
+
+  function sidebarCollapsed() {
+    var saved = null;
+    try {
+      saved = localStorage.getItem(SIDE_KEY);
+    } catch (e) {
+      saved = null;
+    }
+    if (saved) return saved === 'collapsed';
+    // No preference yet: a phone starts with the menu closed, a desktop open.
+    return window.innerWidth < 861;
+  }
+
+  function setSidebar(collapsed) {
+    document.body.classList.toggle('side-collapsed', collapsed);
+    try {
+      localStorage.setItem(SIDE_KEY, collapsed ? 'collapsed' : 'open');
+    } catch (e) {
+      /* a private window simply forgets the preference */
+    }
   }
 
   function renderNav(me) {
     var host = $('#topbar');
     if (!host) return;
+    if (!me || !me.signedIn) {
+      host.className = 'sidebar is-empty';
+      host.innerHTML = '';
+      return;
+    }
+
+    host.className = 'sidebar';
+    document.body.classList.add('has-sidebar');
+    if (sidebarCollapsed()) document.body.classList.add('side-collapsed');
+
     var here = location.pathname.replace(/\/index\.html$/, '/');
     var links = navFor(me)
       .map(function (item) {
         var active = item.match.indexOf(here) !== -1;
         return (
-          '<a href="' + item.href + '"' + (active ? ' aria-current="page"' : '') + '>' +
+          '<a href="' +
+          item.href +
+          '"' +
+          (active ? ' aria-current="page"' : '') +
+          ' title="' +
           esc(item.label) +
-          '</a>'
+          '">' +
+          icon(item.icon) +
+          '<span class="label">' +
+          esc(item.label) +
+          '</span></a>'
         );
       })
       .join('');
 
-    var account = '';
-    if (me && me.signedIn) {
-      account =
-        '<div class="account">' +
-        '<div class="account-who"><span class="account-name">' +
-        esc(me.name || me.email) +
-        '</span><span class="account-role">' +
-        esc(me.roleLabel || '') +
-        '</span></div>' +
-        '<button type="button" class="btn btn-quiet btn-small" id="sign-out">Sign out</button>' +
-        '</div>';
-    }
-
     host.innerHTML =
-      '<div class="topbar-inner">' +
-      '<a class="brand-lockup" href="' + (me && me.canReview && !me.canSubmit ? '/review.html' : '/') + '">' +
+      '<div class="side-top">' +
+      '<a class="brand-lockup" href="' + (me.canSubmit ? '/' : '/review.html') + '" title="Account Transfer Validation">' +
       '<img src="/logo.png" alt="Applied AI">' +
-      '<span class="brand-divider"></span>' +
-      '<span class="brand-app">' +
-      esc(me && me.appName ? me.appName : 'Account Transfer Validation') +
-      '</span>' +
       '</a>' +
-      '<nav class="nav-links">' + links + '</nav>' +
-      account +
+      '<button type="button" class="side-toggle" id="side-toggle" aria-label="Expand or collapse the menu">' +
+      icon('chevron') +
+      '</button>' +
+      '</div>' +
+      '<div class="side-app"><span class="label">Account Transfer Validation</span></div>' +
+      '<nav class="side-nav">' +
+      links +
+      '</nav>' +
+      '<div class="side-foot">' +
+      '<a class="side-support" id="support-link" href="' +
+      supportHref(me, { what: 'question from the console' }) +
+      '" title="Contact Opus support">' +
+      icon('support') +
+      '<span class="label">Contact Opus support</span></a>' +
+      '<div class="side-account">' +
+      '<span class="avatar">' +
+      esc((me.name || me.email || '?').slice(0, 1).toUpperCase()) +
+      '</span>' +
+      '<span class="label"><span class="account-name">' +
+      esc(me.name || me.email) +
+      '</span><span class="account-role">' +
+      esc(me.roleLabel || '') +
+      '</span></span>' +
+      '</div>' +
+      '<button type="button" class="side-out" id="sign-out" title="Sign out">' +
+      icon('signout') +
+      '<span class="label">Sign out</span></button>' +
       '</div>';
 
-    var out = $('#sign-out');
-    if (out) {
-      out.addEventListener('click', function () {
-        fetchJson('/api/logout', { method: 'POST' })
-          .catch(function () {})
-          .then(function () {
-            location.href = me && me.canReview && !me.canSubmit ? '/review-login.html' : '/login.html';
-          });
-      });
-    }
+    $('#side-toggle').addEventListener('click', function () {
+      setSidebar(!document.body.classList.contains('side-collapsed'));
+    });
+
+    $('#sign-out').addEventListener('click', function () {
+      fetchJson('/api/logout', { method: 'POST' })
+        .catch(function () {})
+        .then(function () {
+          location.href = me.canReview && !me.canSubmit ? '/review-login.html' : '/login.html';
+        });
+    });
   }
 
   function renderFooter(me) {
@@ -143,9 +273,9 @@
 
   /**
    * One call for the shared chrome and the session gate.
-   *   ATV.boot(fn)                      a signed in user of any role
-   *   ATV.boot(fn, { need: 'reviewer' } ) reviewers and the admin only
-   *   ATV.boot(fn, { need: 'public' })  sign in pages
+   *   ATV.boot(fn)                        a signed in user of any role
+   *   ATV.boot(fn, { need: 'reviewer' })  managers and the admin only
+   *   ATV.boot(fn, { need: 'public' })    the sign in pages
    */
   function boot(onReady, options) {
     var need = (options && options.need) || 'user';
@@ -175,7 +305,8 @@
         if (main) {
           main.hidden = false;
           main.innerHTML =
-            '<div class="card"><div class="notice notice-bad">This console could not reach its own API: ' +
+            '<div class="card"><div class="notice notice-bad"><span class="glyph">!</span> ' +
+            'This console could not reach its own API: ' +
             esc(err.message) +
             '</div></div>';
         }
@@ -359,6 +490,82 @@
       .replace(/\bin ([a-z ]+), ([a-z ]+)\.$/i, 'in $1 and $2.');
   }
 
+  /* Date ranges: one vocabulary for the lists, the export and the report. */
+  function ymd(d) {
+    return (
+      d.getFullYear() +
+      '-' +
+      String(d.getMonth() + 1).padStart(2, '0') +
+      '-' +
+      String(d.getDate()).padStart(2, '0')
+    );
+  }
+
+  function monthRange(offset) {
+    var now = new Date();
+    var start = new Date(now.getFullYear(), now.getMonth() + (offset || 0), 1);
+    var end = new Date(start.getFullYear(), start.getMonth() + 1, 0);
+    return { from: ymd(start), to: ymd(end) };
+  }
+
+  function rangeFor(preset, month) {
+    if (preset === 'this-month') return monthRange(0);
+    if (preset === 'last-month') return monthRange(-1);
+    if (preset === 'last-7') {
+      var now = new Date();
+      var back = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6);
+      return { from: ymd(back), to: ymd(now) };
+    }
+    if (preset === 'last-90') {
+      var today = new Date();
+      var then = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 89);
+      return { from: ymd(then), to: ymd(today) };
+    }
+    if (preset === 'month' && month) {
+      var parts = String(month).split('-');
+      var first = new Date(Number(parts[0]), Number(parts[1]) - 1, 1);
+      var last = new Date(Number(parts[0]), Number(parts[1]), 0);
+      return { from: ymd(first), to: ymd(last) };
+    }
+    return { from: '', to: '' };
+  }
+
+  function rangeQuery(range) {
+    var bits = [];
+    if (range && range.from) bits.push('from=' + encodeURIComponent(range.from));
+    if (range && range.to) bits.push('to=' + encodeURIComponent(range.to));
+    return bits.join('&');
+  }
+
+  function monthLabel(key) {
+    var parts = String(key).split('-');
+    var d = new Date(Number(parts[0]), Number(parts[1]) - 1, 1);
+    if (isNaN(d.getTime())) return key;
+    return d.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+  }
+
+  function money(amount, currency) {
+    if (typeof amount !== 'number' || isNaN(amount)) return '';
+    var text = amount.toLocaleString(undefined, { maximumFractionDigits: 0 });
+    if (!currency) return text;
+    return /^[A-Za-z]{3}$/.test(currency) ? currency + ' ' + text : currency + text;
+  }
+
+  /* Axis ticks need short money: $1.2M reads, $1,200,000 does not, and five
+     ticks that all round to the same string read as a bug. */
+  function moneyShort(amount, currency) {
+    if (typeof amount !== 'number' || isNaN(amount)) return '';
+    var abs = Math.abs(amount);
+    var text;
+    if (abs >= 1e9) text = (amount / 1e9).toFixed(abs >= 1e10 ? 0 : 1) + 'B';
+    else if (abs >= 1e6) text = (amount / 1e6).toFixed(abs >= 1e7 ? 0 : 1) + 'M';
+    else if (abs >= 1e3) text = (amount / 1e3).toFixed(abs >= 1e4 ? 0 : 1) + 'k';
+    else text = String(Math.round(amount));
+    text = text.replace(/\.0(?=[kMB]$)/, '');
+    if (!currency) return text;
+    return /^[A-Za-z]{3}$/.test(currency) ? currency + ' ' + text : currency + text;
+  }
+
   function formatTime(iso) {
     if (!iso) return '';
     var d = new Date(iso);
@@ -380,6 +587,8 @@
     maskSensitive: maskSensitive,
     fetchJson: fetchJson,
     boot: boot,
+    supportHref: supportHref,
+    icon: icon,
     onAuthLoss: onAuthLoss,
     statusPill: statusPill,
     verdictPill: verdictPill,
@@ -392,6 +601,12 @@
     formatValue: formatValue,
     tidy: tidy,
     formatTime: formatTime,
+    ymd: ymd,
+    rangeFor: rangeFor,
+    rangeQuery: rangeQuery,
+    monthLabel: monthLabel,
+    money: money,
+    moneyShort: moneyShort,
     STATUS_TEXT: STATUS_TEXT
   };
 })(window);

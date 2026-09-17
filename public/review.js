@@ -15,6 +15,29 @@
     return row.reviewState || 'pending';
   }
 
+
+  /* The period controls are shared with the report, so they behave the same
+     way wherever they appear. */
+  function currentRange() {
+    var preset = $('#filter-preset').value;
+    if (preset === 'custom') return { from: $('#filter-from').value, to: $('#filter-to').value };
+    return ATV.rangeFor(preset, $('#filter-month').value);
+  }
+
+  function syncPeriodControls() {
+    var preset = $('#filter-preset').value;
+    $('#filter-month').hidden = preset !== 'month';
+    $('#custom-wrap').hidden = preset !== 'custom';
+    if (preset === 'month' && !$('#filter-month').value) {
+      $('#filter-month').value = new Date().toISOString().slice(0, 7);
+    }
+    if (preset === 'custom' && !$('#filter-from').value) {
+      var start = ATV.rangeFor('this-month');
+      $('#filter-from').value = start.from;
+      $('#filter-to').value = start.to;
+    }
+  }
+
   function matches(row) {
     var state = $('#filter-state').value;
     if (state && stateOf(row) !== state) return false;
@@ -100,23 +123,25 @@
           '<td data-label="Submitted by">' +
           esc(row.submittedByName || row.submittedBy || '') +
           '</td>' +
-          '<td data-label="Workflow">' +
+          '<td data-label="Workflow"><div>' +
           outcome +
-          '</td>' +
-          '<td class="num" data-label="Issues"' +
-          (typeof row.totalIssues === 'number' ? '' : ' data-empty="1"') +
-          '><div>' +
-          '<div>' +
-          (typeof row.totalIssues === 'number' ? row.totalIssues : '') +
-          '</div>' +
           (row.lowConfidence
             ? '<div style="margin-top: 4px"><span class="pill pill-warn"><span class="glyph">▲</span>' +
               row.lowConfidence +
               ' to verify</span></div>'
             : '') +
           '</div></td>' +
-          '<td data-label="Review">' +
-          (stateOf(row) === 'unfinished' ? ATV.statusPill(row.status) : ATV.reviewPill(row.reviewState)) +
+          '<td class="num" data-label="Issues"' +
+          (typeof row.totalIssues === 'number' ? '' : ' data-empty="1"') +
+          '>' +
+          (typeof row.totalIssues === 'number' ? row.totalIssues : '') +
+          '</td>' +
+          '<td data-label="Review"' +
+          (stateOf(row) === 'unfinished' ? ' data-empty="1"' : '') +
+          '>' +
+          (stateOf(row) === 'unfinished'
+            ? '<span class="quiet">Not applicable</span>'
+            : ATV.reviewPill(row.reviewState)) +
           (row.reviewedByName
             ? '<div class="card-sub" style="margin: 2px 0 0">' + esc(row.reviewedByName) + '</div>'
             : '') +
@@ -145,28 +170,48 @@
       '</tbody></table></div>';
   }
 
+  function load() {
+    var range = currentRange();
+    var query = ATV.rangeQuery(range);
+    $('#export-link').href = '/api/export.csv' + (query ? '?' + query : '');
+    $('#queue-body').innerHTML = '<div class="skeleton">Loading the queue</div>';
+
+    ATV.fetchJson('/api/queue' + (query ? '?' + query : ''))
+      .then(function (out) {
+        rows = out.rows || [];
+        if (out.note) {
+          $('#queue-body').innerHTML =
+            '<div class="notice notice-warn"><span class="glyph">▲</span> ' + esc(out.note) + '</div>';
+          $('#queue-stats').hidden = true;
+          if (!rows.length) return;
+        }
+        $('#queue-stats').hidden = false;
+        renderStats();
+        render();
+      })
+      .catch(function (err) {
+        if (ATV.onAuthLoss(err)) return;
+        $('#queue-body').innerHTML =
+          '<div class="notice notice-bad"><span class="glyph">!</span> The queue could not be read: ' +
+          esc(err.message) +
+          '</div>';
+      });
+  }
+
   ATV.boot(
     function () {
       $('#filter-state').addEventListener('change', render);
       $('#filter-verdict').addEventListener('change', render);
       $('#filter-text').addEventListener('input', render);
-
-      ATV.fetchJson('/api/queue')
-        .then(function (out) {
-          rows = out.rows || [];
-          if (out.note) {
-            $('#queue-body').innerHTML = '<div class="notice notice-warn">' + esc(out.note) + '</div>';
-            $('#queue-stats').hidden = true;
-            if (!rows.length) return;
-          }
-          renderStats();
-          render();
-        })
-        .catch(function (err) {
-          if (ATV.onAuthLoss(err)) return;
-          $('#queue-body').innerHTML =
-            '<div class="notice notice-bad">The queue could not be read: ' + esc(err.message) + '</div>';
+      ['#filter-preset', '#filter-month', '#filter-from', '#filter-to'].forEach(function (sel) {
+        $(sel).addEventListener('change', function () {
+          syncPeriodControls();
+          load();
         });
+      });
+
+      syncPeriodControls();
+      load();
     },
     { need: 'reviewer' }
   );

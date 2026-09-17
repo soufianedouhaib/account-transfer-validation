@@ -9,6 +9,29 @@
   var rows = [];
   var canReview = false;
 
+
+  /* The period controls are shared with the report, so they behave the same
+     way wherever they appear. */
+  function currentRange() {
+    var preset = $('#filter-preset').value;
+    if (preset === 'custom') return { from: $('#filter-from').value, to: $('#filter-to').value };
+    return ATV.rangeFor(preset, $('#filter-month').value);
+  }
+
+  function syncPeriodControls() {
+    var preset = $('#filter-preset').value;
+    $('#filter-month').hidden = preset !== 'month';
+    $('#custom-wrap').hidden = preset !== 'custom';
+    if (preset === 'month' && !$('#filter-month').value) {
+      $('#filter-month').value = new Date().toISOString().slice(0, 7);
+    }
+    if (preset === 'custom' && !$('#filter-from').value) {
+      var start = ATV.rangeFor('this-month');
+      $('#filter-from').value = start.from;
+      $('#filter-to').value = start.to;
+    }
+  }
+
   function matches(row) {
     var outcome = $('#filter-outcome').value;
     if (outcome === 'IGO' && row.verdict !== 'IGO') return false;
@@ -59,10 +82,10 @@
           '">' +
           esc(row.title || row.fileName || row.caseId) +
           '</a>' +
-          (row.fileName && row.title !== row.fileName
-            ? '<div class="card-sub" style="margin: 2px 0 0">' + esc(row.fileName) + '</div>'
-            : '') +
-          '</div></td>' +
+          '<div class="card-sub" style="margin: 2px 0 0">' +
+          esc(row.clientName || 'Client not read') +
+          (row.contraFirm ? ', ' + esc(row.contraFirm) : '') +
+          '</div></div></td>' +
           '<td data-label="Client"' +
           (row.clientName ? '' : ' data-empty="1"') +
           '>' +
@@ -71,23 +94,23 @@
           (canReview
             ? '<td data-label="Submitted by">' + esc(row.submittedByName || row.submittedBy || '') + '</td>'
             : '<td data-label="Contra firm">' + esc(row.contraFirm || '') + '</td>') +
-          '<td data-label="Workflow">' +
+          '<td data-label="Workflow"><div>' +
           outcome +
-          '</td>' +
-          '<td class="num" data-label="Issues"' +
-          (typeof row.totalIssues === 'number' ? '' : ' data-empty="1"') +
-          '><div>' +
-          '<div>' +
-          (typeof row.totalIssues === 'number' ? row.totalIssues : '') +
-          '</div>' +
           (row.lowConfidence
             ? '<div style="margin-top: 4px"><span class="pill pill-warn"><span class="glyph">▲</span>' +
               row.lowConfidence +
               ' to verify</span></div>'
             : '') +
           '</div></td>' +
+          '<td class="num" data-label="Issues"' +
+          (typeof row.totalIssues === 'number' ? '' : ' data-empty="1"') +
+          '>' +
+          (typeof row.totalIssues === 'number' ? row.totalIssues : '') +
+          '</td>' +
           '<td data-label="Review">' +
-          (row.status === 'COMPLETED' ? ATV.reviewPill(row.reviewState) : ATV.statusPill(row.status)) +
+          (row.status === 'COMPLETED'
+            ? ATV.reviewPill(row.reviewState)
+            : '<span class="quiet">Not applicable</span>') +
           '</td>' +
           '<td data-label="Submitted">' +
           esc(ATV.formatTime(row.createdAt)) +
@@ -109,8 +132,15 @@
   }
 
   function load(scope) {
+    var range = currentRange();
+    var query = ATV.rangeQuery(range);
+    if (canReview) {
+      $('#export-link').href = '/api/export.csv' + (query ? '?' + query : '');
+    }
     $('#history-body').innerHTML = '<div class="skeleton">Loading</div>';
-    ATV.fetchJson('/api/history?limit=200' + (scope ? '&scope=' + scope : ''))
+    ATV.fetchJson(
+      '/api/history?limit=200' + (scope ? '&scope=' + scope : '') + (query ? '&' + query : '')
+    )
       .then(function (out) {
         rows = out.rows || [];
         if (out.note) {
@@ -131,7 +161,16 @@
     $('#filter-outcome').addEventListener('change', render);
     $('#filter-text').addEventListener('input', render);
 
+    ['#filter-preset', '#filter-month', '#filter-from', '#filter-to'].forEach(function (sel) {
+      $(sel).addEventListener('change', function () {
+        syncPeriodControls();
+        load(canReview ? $('#filter-scope').value : '');
+      });
+    });
+    syncPeriodControls();
+
     if (canReview) {
+      $('#export-link').hidden = false;
       $('#page-title').textContent = 'All runs';
       $('#page-sub').textContent =
         'Every packet submitted through this console, newest first, whoever submitted it.';

@@ -448,6 +448,7 @@
       statsHtml(result.audit) +
       lowConfidenceHtml(result.low_confidence_fields) +
       errorNote +
+      (payload.workflowError ? supportCardHtml(payload) : '') +
       '<div style="height: 16px"></div>' +
       explanationHtml(
         payload.explanation,
@@ -469,6 +470,26 @@
     afterTerminal(payload);
   }
 
+  function supportCardHtml(payload) {
+    var href = ATV.supportHref(me, {
+      what: 'a run that did not finish',
+      caseId: caseId,
+      status: (payload && payload.status) || 'unknown'
+    });
+    return (
+      '<section class="card" style="margin-top: 16px"><div class="support-card">' +
+      ATV.icon('support') +
+      '<div><h2 style="font-size: 17px; margin-bottom: 4px">Still stuck?</h2>' +
+      '<p class="card-sub" style="margin: 0 0 12px">' +
+      'If this keeps happening, Opus support can look at the run itself. The email opens with ' +
+      'the workflow id, this case id and the run status already filled in.' +
+      '</p>' +
+      '<a class="btn btn-small" href="' +
+      href +
+      '">Contact Opus support</a></div></div></section>'
+    );
+  }
+
   function renderFailure(payload) {
     $('#failed').innerHTML =
       '<div class="verdict is-dead">' +
@@ -478,7 +499,8 @@
       '<div class="verdict-sub">' +
       'The validation stopped before it reached a decision. Nothing was decided about ' +
       'this packet, so submitting it again is safe.' +
-      '</div></div></div>';
+      '</div></div></div>' +
+      supportCardHtml(payload);
     $('#failed').hidden = false;
     $('#running').hidden = true;
     $('#result').hidden = true;
@@ -544,8 +566,10 @@
     }
     if (row && row.createdAt) bits.push('Submitted ' + esc(ATV.formatTime(row.createdAt)));
     bits.push(ATV.statusPill(status));
-    if (row && row.reviewState && row.reviewState === 'pending') {
-      bits.push(ATV.reviewPill(row.reviewState));
+    // Only a finished run can be waiting for a manager. A run still going, or
+    // one that crashed, says so once in the status pill and nowhere else.
+    if (row && status === 'COMPLETED' && row.reviewState === 'pending') {
+      bits.push(ATV.reviewPill('pending'));
     }
     $('#case-meta').innerHTML = bits
       .map(function (b) {
@@ -565,7 +589,8 @@
         if (!payload.terminal) {
           $('#running').hidden = false;
           $('#running-note').textContent =
-            'Extracting the documents and running the checks. Elapsed ' +
+            'Reading the documents and running the checks. This usually takes a minute or two. ' +
+            'Elapsed ' +
             Math.round((Date.now() - startedAt) / 1000) +
             's.';
           timer = setTimeout(poll, POLL_MS);
@@ -583,9 +608,10 @@
         $('#case-title').textContent = 'Validation not found';
         $('#failed').innerHTML =
           '<div class="card"><div class="empty"><strong>This validation could not be found</strong>' +
-          'It may belong to another advisor, or the link may be incomplete. ' +
+          'It may belong to another colleague, or the link may be incomplete. ' +
           'Starting a new validation is the quickest way forward.' +
-          '</div></div>';
+          '</div></div>' +
+          supportCardHtml({ status: 'not found' });
         if (window.console && console.warn) console.warn('Case lookup failed: ' + err.message);
       });
   }
