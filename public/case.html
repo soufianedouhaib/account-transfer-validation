@@ -16,6 +16,8 @@
         <div class="meta-row" id="case-meta"></div>
       </div>
 
+      <div id="decision-slot"></div>
+
       <div id="running" class="card" hidden>
         <div class="progress-wrap">
           <div class="spinner"></div>
@@ -37,10 +39,12 @@
 
       <div id="failed" hidden></div>
       <div id="result" hidden></div>
+      <div id="review-slot"></div>
+      <div id="document-slot"></div>
 
       <div class="toolbar" id="actions" hidden style="margin-top: 18px">
-        <a class="btn" href="/">Validate another packet</a>
-        <a class="btn btn-quiet" href="/history.html">History</a>
+        <a class="btn" href="/" id="action-new">Validate another packet</a>
+        <a class="btn btn-quiet" href="/history.html" id="action-list">History</a>
         <span class="spacer"></span>
         <button type="button" class="btn btn-quiet btn-small" id="copy-json">Copy result JSON</button>
       </div>

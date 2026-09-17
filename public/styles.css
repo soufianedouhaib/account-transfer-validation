@@ -40,6 +40,8 @@
   --radius-sm: 9px;
   --logo-filter: none;
   --on-brand: #ffffff;
+  --muted-ink: #5c5c66;
+  color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -55,9 +57,9 @@
     --muted: #a1a1aa;
     --muted-2: #8b8b93;
 
-    --surface: #121214;
-    --surface-2: #1a1a1d;
-    --surface-3: #232327;
+    --surface: #1b1b1f;
+    --surface-2: #121214;
+    --surface-3: #26262b;
     --line: #2c2c31;
     --line-strong: #3a3a40;
 
@@ -76,6 +78,8 @@
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 8px 24px rgba(0, 0, 0, 0.4);
     --logo-filter: invert(1);
     --on-brand: #0d1117;
+    --muted-ink: #b4b4bc;
+    color-scheme: dark;
   }
 }
 
@@ -91,9 +95,9 @@
   --muted: #a1a1aa;
   --muted-2: #8b8b93;
 
-  --surface: #121214;
-  --surface-2: #1a1a1d;
-  --surface-3: #232327;
+  --surface: #1b1b1f;
+  --surface-2: #121214;
+  --surface-3: #26262b;
   --line: #2c2c31;
   --line-strong: #3a3a40;
 
@@ -112,6 +116,8 @@
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 8px 24px rgba(0, 0, 0, 0.4);
   --logo-filter: invert(1);
   --on-brand: #0d1117;
+  --muted-ink: #b4b4bc;
+  color-scheme: dark;
 }
 
 /* The user agent sheet loses to any author rule that sets display, so state it
@@ -331,6 +337,8 @@ label.field span {
 
 input[type='text'],
 input[type='search'],
+input[type='email'],
+input[type='password'],
 select,
 textarea {
   width: 100%;
@@ -775,13 +783,13 @@ td.nowrap {
 }
 
 .pair .v.is-empty {
-  color: var(--muted-2);
+  color: var(--muted);
   font-style: italic;
 }
 
 .conf {
   font-size: 11.5px;
-  color: var(--muted);
+  color: var(--muted-ink);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -1067,5 +1075,289 @@ details.raw pre {
   .pair {
     grid-template-columns: 1fr;
     gap: 2px;
+  }
+}
+
+/* ------------------------------- account -------------------------------- */
+
+.account {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-left: 16px;
+  margin-left: 4px;
+  border-left: 1px solid var(--line);
+}
+
+.account-who {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+  text-align: right;
+}
+
+.account-name {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.account-role {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+/* ------------------------------- sign in -------------------------------- */
+
+.signin {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 56px;
+}
+
+.signin-card {
+  width: 100%;
+  max-width: 420px;
+  text-align: left;
+}
+
+.signin-logo {
+  height: 22px;
+  width: auto;
+  display: block;
+  margin-bottom: 18px;
+  filter: var(--logo-filter);
+}
+
+.signin-card h1 {
+  font-size: 23px;
+  margin-bottom: 6px;
+}
+
+.signin-card .card-sub {
+  margin-top: 0;
+  margin-bottom: 20px;
+}
+
+.signin-switch {
+  margin: 18px 0 0;
+  text-align: center;
+}
+
+.signin-page .topbar {
+  display: none;
+}
+
+/* ------------------------------ decisions ------------------------------- */
+
+.choices {
+  display: grid;
+  gap: 8px;
+}
+
+.choice {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  cursor: pointer;
+  background: var(--surface);
+}
+
+.choice:hover {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+}
+
+.choice input {
+  width: auto;
+  margin: 3px 0 0;
+  accent-color: var(--brand);
+  flex: 0 0 auto;
+}
+
+.choice span {
+  display: block;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+
+.choice strong {
+  display: block;
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 1px;
+}
+
+.choice:has(input:checked) {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+  box-shadow: inset 0 0 0 1px var(--brand);
+}
+
+/* ------------------------------ the packet ------------------------------ */
+
+.doc-frame {
+  width: 100%;
+  height: 620px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.doc-image {
+  width: 100%;
+  height: auto;
+  max-height: 620px;
+  object-fit: contain;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  display: block;
+}
+
+@media (max-width: 720px) {
+  .doc-frame {
+    height: 420px;
+  }
+  .account-who {
+    display: none;
+  }
+  .account {
+    padding-left: 10px;
+  }
+  .signin {
+    padding-top: 24px;
+  }
+}
+
+
+/* A run that never produced a verdict is not a verdict. */
+.pill-stop {
+  background: var(--surface-3);
+  border-color: var(--line-strong);
+  color: var(--ink-2);
+}
+
+.quiet {
+  color: var(--muted);
+}
+
+.verdict.is-warn {
+  border-color: var(--warn-line);
+  background: var(--warn-soft);
+}
+
+.verdict.is-warn .verdict-mark {
+  background: var(--warn);
+}
+
+/* The reviewer always has one way back to the decision, however long the
+   findings and the packet run. */
+.jump-bar {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 12px 10px 18px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+  font-size: 13.5px;
+  max-width: calc(100% - 32px);
+}
+
+.jump-bar span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.notice .glyph {
+  font-weight: 700;
+  margin-right: 2px;
+}
+
+@media (max-width: 720px) {
+  /* The signed in account has to survive on a phone: it is the only way to
+     tell which of five test accounts you are using. */
+  .topbar-inner {
+    height: auto;
+    padding: 10px 16px;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+  }
+
+  .nav-links {
+    order: 3;
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .nav-links a {
+    padding: 6px 10px;
+    white-space: nowrap;
+  }
+
+  .account {
+    margin-left: auto;
+    padding-left: 12px;
+  }
+
+  .account-who {
+    display: flex;
+  }
+
+  .account-name,
+  .account-role {
+    font-size: 11.5px;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .jump-bar {
+    left: 16px;
+    right: 16px;
+    transform: none;
+    max-width: none;
+    justify-content: space-between;
+  }
+
+  /* Heading and its controls stop fighting for one row. */
+  .card-head {
+    flex-wrap: wrap;
+  }
+
+  .card-head h2 {
+    flex: 1 1 100%;
+    margin-right: 0;
+  }
+}
+
+
+/* A sticky header must not land on top of whatever was scrolled to. */
+:root {
+  scroll-behavior: smooth;
+}
+
+.card,
+#review-card,
+.verdict {
+  scroll-margin-top: 84px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    scroll-behavior: auto;
   }
 }

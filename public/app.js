@@ -110,6 +110,7 @@
         location.href = '/case.html?id=' + encodeURIComponent(out.caseId);
       })
       .catch(function (err) {
+        if (ATV.onAuthLoss(err)) return;
         setBusy(false);
         showError(err.message);
       });
@@ -135,19 +136,26 @@
           '<td data-label="Client">' +
           esc(row.clientName || '') +
           '</td>' +
-          '<td data-label="Outcome">' +
+          '<td data-label="Workflow">' +
           (row.status === 'COMPLETED' && row.verdict
             ? ATV.verdictPill(row.verdict)
             : ATV.statusPill(row.status)) +
           '</td>' +
-          '<td class="num" data-label="Issues">' +
-          (row.totalIssues === null ? '' : row.totalIssues) +
-          (row.lowConfidence
-            ? ' <span class="pill pill-warn"><span class="glyph">▲</span>' +
-              row.lowConfidence +
-              ' to verify</span>'
-            : '') +
+          '<td data-label="Review">' +
+          (row.status === 'COMPLETED' ? ATV.reviewPill(row.reviewState) : '') +
           '</td>' +
+          '<td class="num" data-label="Issues"' +
+          (typeof row.totalIssues === 'number' ? '' : ' data-empty="1"') +
+          '><div>' +
+          '<div>' +
+          (row.totalIssues === null ? '' : row.totalIssues) +
+          '</div>' +
+          (row.lowConfidence
+            ? '<div style="margin-top: 4px"><span class="pill pill-warn"><span class="glyph">▲</span>' +
+              row.lowConfidence +
+              ' to verify</span></div>'
+            : '') +
+          '</div></td>' +
           '<td data-label="Submitted">' +
           esc(ATV.formatTime(row.createdAt)) +
           '</td>' +
@@ -158,13 +166,20 @@
 
     $('#recent-body').innerHTML =
       '<div class="table-wrap"><table class="data-table"><thead><tr>' +
-      '<th>Reference</th><th>Client</th><th>Outcome</th><th class="num">Issues</th><th>Submitted</th>' +
+      '<th>Reference</th><th>Client</th><th>Workflow</th><th>Review</th><th class="num">Issues</th><th>Submitted</th>' +
       '</tr></thead><tbody>' +
       body +
       '</tbody></table></div>';
   }
 
   ATV.boot(function (me) {
+    // A reviewer account has no submit screen. Send it to the queue instead of
+    // showing a form its session cannot use.
+    if (!me.canSubmit) {
+      location.replace('/review.html');
+      return;
+    }
+
     var zone = $('#dropzone');
     var input = $('#file-input');
 
@@ -194,6 +209,24 @@
     input.addEventListener('change', function () {
       pick(input.files && input.files[0]);
     });
+    var from = new URLSearchParams(location.search).get('from');
+    if (from) {
+      ATV.fetchJson('/api/case/' + encodeURIComponent(from))
+        .then(function (payload) {
+          var row = payload.row || {};
+          if (row.title) $('#title').value = row.title;
+          var note = payload.review && payload.review.note;
+          $('#resubmit-note').innerHTML =
+            '<span class="glyph">▪</span> <strong>Resubmitting ' +
+            esc(row.title || 'a corrected packet') +
+            '.</strong>' +
+            (note ? ' The reviewer asked for: ' + ATV.escMasked(note) : '') +
+            ' Attach the corrected file and run it again.';
+          $('#resubmit-note').hidden = false;
+        })
+        .catch(function () {});
+    }
+
     $('#file-clear').addEventListener('click', clearFile);
     $('#submit-form').addEventListener('submit', submit);
 
@@ -208,7 +241,8 @@
         .then(function (out) {
           renderRecent(out.rows || []);
         })
-        .catch(function () {
+        .catch(function (err) {
+          if (ATV.onAuthLoss(err)) return;
           $('#recent-card').hidden = true;
         });
     }

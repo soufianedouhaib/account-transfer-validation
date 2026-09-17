@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>History, Account Transfer Validation</title>
+    <title>Runs, Account Transfer Validation</title>
     <link rel="icon" href="/logo.png" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
@@ -12,12 +12,18 @@
 
     <main class="page" id="main" hidden>
       <div class="page-head">
-        <h1>Validation history</h1>
-        <p id="page-sub">Every packet submitted through this console, newest first.</p>
+        <h1 id="page-title">Runs</h1>
+        <p id="page-sub">Newest first.</p>
       </div>
 
       <section class="card">
         <div class="toolbar">
+          <span id="scope-wrap" hidden>
+            <select id="filter-scope" aria-label="Whose runs to show">
+              <option value="">Everyone's runs</option>
+              <option value="mine">Only mine</option>
+            </select>
+          </span>
           <select id="filter-outcome" aria-label="Filter by outcome">
             <option value="">All outcomes</option>
             <option value="IGO">In good order</option>
@@ -28,7 +34,7 @@
           <span class="spacer"></span>
           <span class="pill" id="count-pill">0 runs</span>
         </div>
-        <div id="history-body"><div class="skeleton">Loading history</div></div>
+        <div id="history-body"><div class="skeleton">Loading</div></div>
       </section>
     </main>
 

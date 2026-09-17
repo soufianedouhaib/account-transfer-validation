@@ -54,6 +54,9 @@
               <input type="text" id="title" placeholder="For example: Karim, Sterling Financial" />
             </label>
 
+            <div id="resubmit-note" class="notice notice-info" hidden>
+              Resubmitting a corrected packet. Attach the updated file and run it again.
+            </div>
             <div id="submit-error" class="notice notice-bad" hidden></div>
 
             <button type="submit" class="btn" id="submit-btn" disabled>Run validation</button>
@@ -90,15 +93,15 @@
             </div>
           </div>
           <p class="card-sub" style="margin: 14px 0 0">
-            Reason codes follow the NIGO taxonomy, NIGO-01 through NIGO-10. Every decision is
-            advisory: the advisor makes the correction and resubmits.
+            Issues are reported with the standard reason codes, NIGO-01 through NIGO-10. The
+            workflow advises, a reviewer decides, and corrections are made by the advisor.
           </p>
         </section>
       </div>
 
       <section class="card" id="recent-card" hidden>
         <div class="card-head">
-          <h2>Recent runs</h2>
+          <h2>Your recent runs</h2>
           <a class="btn btn-quiet btn-small" href="/history.html">See all</a>
         </div>
         <div id="recent-body"></div>

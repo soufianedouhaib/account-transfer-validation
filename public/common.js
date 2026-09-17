@@ -1,14 +1,9 @@
-/* Shared chrome and helpers. Every page loads this first, then its own script.
-   Pages render nothing until /api/me answers, so a visitor never sees a flash
-   of a screen that is about to change. */
+/* Shared chrome, session handling and helpers. Every page loads this first,
+   then its own script. Pages render nothing until /api/me answers, so a
+   signed out visitor never sees a flash of a screen they are about to lose. */
 
 (function (global) {
   'use strict';
-
-  var NAV = [
-    { href: '/', label: 'New validation', match: ['/', '/index.html'] },
-    { href: '/history.html', label: 'History', match: ['/history.html'] }
-  ];
 
   function $(sel, root) {
     return (root || document).querySelector(sel);
@@ -16,6 +11,20 @@
 
   function $$(sel, root) {
     return Array.prototype.slice.call((root || document).querySelectorAll(sel));
+  }
+
+  /* A social security number never renders in full, wherever it came from.
+     The workflow quotes firm records verbatim, so the masking happens here at
+     the last moment rather than being trusted to every upstream string. */
+  function maskSensitive(value) {
+    if (value === null || value === undefined) return '';
+    return String(value)
+      .replace(/\b(\d{3})[-\s.](\d{2})[-\s.](\d{4})\b/g, '***\u2011**\u2011$3')
+      .replace(/\b\d{5}(\d{4})\b/g, '*****$1');
+  }
+
+  function escMasked(value) {
+    return esc(maskSensitive(value));
   }
 
   function esc(value) {
@@ -53,44 +62,78 @@
     });
   }
 
+  function navFor(me) {
+    if (!me || !me.signedIn) return [];
+    var links = [];
+    if (me.canSubmit) links.push({ href: '/', label: 'New validation', match: ['/', '/index.html'] });
+    if (me.canReview) {
+      links.push({ href: '/review.html', label: 'Review queue', match: ['/review.html'] });
+      links.push({ href: '/history.html', label: 'All runs', match: ['/history.html'] });
+    } else {
+      links.push({ href: '/history.html', label: 'My runs', match: ['/history.html'] });
+    }
+    return links;
+  }
+
   function renderNav(me) {
     var host = $('#topbar');
     if (!host) return;
     var here = location.pathname.replace(/\/index\.html$/, '/');
-    var links = NAV.map(function (item) {
-      var active = item.match.indexOf(here) !== -1;
-      return (
-        '<a href="' +
-        item.href +
-        '"' +
-        (active ? ' aria-current="page"' : '') +
-        '>' +
-        esc(item.label) +
-        '</a>'
-      );
-    }).join('');
+    var links = navFor(me)
+      .map(function (item) {
+        var active = item.match.indexOf(here) !== -1;
+        return (
+          '<a href="' + item.href + '"' + (active ? ' aria-current="page"' : '') + '>' +
+          esc(item.label) +
+          '</a>'
+        );
+      })
+      .join('');
+
+    var account = '';
+    if (me && me.signedIn) {
+      account =
+        '<div class="account">' +
+        '<div class="account-who"><span class="account-name">' +
+        esc(me.name || me.email) +
+        '</span><span class="account-role">' +
+        esc(me.roleLabel || '') +
+        '</span></div>' +
+        '<button type="button" class="btn btn-quiet btn-small" id="sign-out">Sign out</button>' +
+        '</div>';
+    }
 
     host.innerHTML =
       '<div class="topbar-inner">' +
-      '<a class="brand-lockup" href="/">' +
+      '<a class="brand-lockup" href="' + (me && me.canReview && !me.canSubmit ? '/review.html' : '/') + '">' +
       '<img src="/logo.png" alt="Applied AI">' +
       '<span class="brand-divider"></span>' +
       '<span class="brand-app">' +
       esc(me && me.appName ? me.appName : 'Account Transfer Validation') +
       '</span>' +
       '</a>' +
-      '<nav class="nav-links">' +
-      links +
-      '</nav>' +
+      '<nav class="nav-links">' + links + '</nav>' +
+      account +
       '</div>';
+
+    var out = $('#sign-out');
+    if (out) {
+      out.addEventListener('click', function () {
+        fetchJson('/api/logout', { method: 'POST' })
+          .catch(function () {})
+          .then(function () {
+            location.href = me && me.canReview && !me.canSubmit ? '/review-login.html' : '/login.html';
+          });
+      });
+    }
   }
 
   function renderFooter(me) {
     var host = $('#footer');
     if (!host) return;
     var bits = ['Applied AI, Account Transfer Validation'];
-    if (me && !me.configured) bits.push('Server not configured');
-    if (me && !me.historyEnabled) bits.push('History not configured');
+    if (me && me.signedIn && !me.configured) bits.push('Server not configured');
+    if (me && me.signedIn && !me.historyEnabled) bits.push('History not configured');
     host.innerHTML = bits
       .map(function (b) {
         return '<span>' + esc(b) + '</span>';
@@ -98,12 +141,30 @@
       .join('');
   }
 
-  /* One call for the shared chrome: pages call boot and get /api/me once. */
-  function boot(onReady) {
+  /**
+   * One call for the shared chrome and the session gate.
+   *   ATV.boot(fn)                      a signed in user of any role
+   *   ATV.boot(fn, { need: 'reviewer' } ) reviewers and the admin only
+   *   ATV.boot(fn, { need: 'public' })  sign in pages
+   */
+  function boot(onReady, options) {
+    var need = (options && options.need) || 'user';
     fetchJson('/api/me')
       .then(function (me) {
-        renderNav(me);
-        renderFooter(me);
+        if (need !== 'public' && !me.signedIn) {
+          location.replace('/login.html?next=' + encodeURIComponent(location.pathname + location.search));
+          return;
+        }
+        if (need === 'reviewer' && !me.canReview) {
+          location.replace('/');
+          return;
+        }
+        if (need === 'public' && me.signedIn) {
+          location.replace(me.canReview && !me.canSubmit ? '/review.html' : '/');
+          return;
+        }
+        renderNav(need === 'public' ? null : me);
+        renderFooter(need === 'public' ? null : me);
         var main = $('#main');
         if (main) main.hidden = false;
         onReady(me);
@@ -119,6 +180,15 @@
             '</div></div>';
         }
       });
+  }
+
+  /** A 401 mid session means the cookie expired. Send them back to sign in. */
+  function onAuthLoss(err) {
+    if (err && err.status === 401) {
+      location.replace('/login.html?next=' + encodeURIComponent(location.pathname + location.search));
+      return true;
+    }
+    return false;
   }
 
   var STATUS_TEXT = {
@@ -137,14 +207,13 @@
     var cls = 'pill';
     var glyph = '•';
     if (status === 'COMPLETED') {
-      cls = 'pill';
       glyph = '▪';
       label = 'Run finished';
     } else if (status === 'FAILED' || status === 'CANCELLED' || status === 'TIMED_OUT') {
-      cls = 'pill pill-bad';
-      glyph = '!';
+      cls = 'pill pill-stop';
+      glyph = '⊘';
+      label = 'Did not finish';
     } else if (status === 'IN_PROGRESS' || status === 'PENDING' || status === 'WAITING') {
-      cls = 'pill';
       glyph = '◷';
     }
     return '<span class="' + cls + '"><span class="glyph">' + glyph + '</span>' + esc(label) + '</span>';
@@ -158,6 +227,22 @@
       return '<span class="pill pill-bad"><span class="glyph">!</span>Not in good order</span>';
     }
     return '<span class="pill">Not determined</span>';
+  }
+
+  var REVIEW_TEXT = {
+    approved: { label: 'Approved', cls: 'pill pill-ok', glyph: '✓' },
+    rejected: { label: 'Rejected', cls: 'pill pill-bad', glyph: '✕' },
+    returned: { label: 'Sent back', cls: 'pill pill-warn', glyph: '↩' },
+    pending: { label: 'Awaiting review', cls: 'pill', glyph: '◷' }
+  };
+
+  function reviewPill(state) {
+    var spec = REVIEW_TEXT[state] || REVIEW_TEXT.pending;
+    return '<span class="' + spec.cls + '"><span class="glyph">' + spec.glyph + '</span>' + spec.label + '</span>';
+  }
+
+  function reviewLabel(state) {
+    return (REVIEW_TEXT[state] || REVIEW_TEXT.pending).label;
   }
 
   function severityPill(severity) {
@@ -247,7 +332,7 @@
     return String(value);
   }
 
-  /* "form.ssn" reads as "SSN, transfer form". Dotted paths never reach a user. */
+  /* "form.ssn" reads as "SSN (transfer form)". Dotted paths never reach a user. */
   var PATH_PREFIX = { form: 'transfer form', statement: 'firm statement' };
 
   function pathLabel(path) {
@@ -287,23 +372,19 @@
     });
   }
 
-  function elapsed(fromIso) {
-    if (!fromIso) return '';
-    var ms = Date.now() - new Date(fromIso).getTime();
-    if (isNaN(ms) || ms < 0) return '';
-    var s = Math.floor(ms / 1000);
-    if (s < 60) return s + 's';
-    return Math.floor(s / 60) + 'm ' + (s % 60) + 's';
-  }
-
   global.ATV = {
     $: $,
     $$: $$,
     esc: esc,
+    escMasked: escMasked,
+    maskSensitive: maskSensitive,
     fetchJson: fetchJson,
     boot: boot,
+    onAuthLoss: onAuthLoss,
     statusPill: statusPill,
     verdictPill: verdictPill,
+    reviewPill: reviewPill,
+    reviewLabel: reviewLabel,
     severityPill: severityPill,
     fieldLabel: fieldLabel,
     pathLabel: pathLabel,
@@ -311,7 +392,6 @@
     formatValue: formatValue,
     tidy: tidy,
     formatTime: formatTime,
-    elapsed: elapsed,
     STATUS_TEXT: STATUS_TEXT
   };
 })(window);

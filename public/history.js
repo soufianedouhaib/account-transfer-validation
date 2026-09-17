@@ -1,4 +1,5 @@
-/* History list. Reads the same projected rows every other screen reads. */
+/* The run list. An advisor sees their own runs. A reviewer or the admin sees
+   everyone's, and can narrow to their own with the scope control. */
 
 (function () {
   'use strict';
@@ -6,6 +7,7 @@
   var $ = ATV.$;
   var esc = ATV.esc;
   var rows = [];
+  var canReview = false;
 
   function matches(row) {
     var outcome = $('#filter-outcome').value;
@@ -15,26 +17,32 @@
 
     var text = $('#filter-text').value.trim().toLowerCase();
     if (!text) return true;
-    return [row.title, row.fileName, row.clientName, row.contraFirm, row.caseId]
-      .filter(Boolean)
-      .join(' ')
-      .toLowerCase()
-      .indexOf(text) !== -1;
+    return (
+      [row.title, row.fileName, row.clientName, row.contraFirm, row.submittedBy, row.caseId]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .indexOf(text) !== -1
+    );
   }
 
   function render() {
     var visible = rows.filter(matches);
-    $('#count-pill').textContent =
-      visible.length + (visible.length === 1 ? ' run' : ' runs');
+    $('#count-pill').textContent = visible.length + (visible.length === 1 ? ' run' : ' runs');
 
     if (!rows.length) {
       $('#history-body').innerHTML =
-        '<div class="empty"><strong>No runs yet</strong>Validated packets appear here once you submit one.</div>';
+        '<div class="empty"><strong>No runs yet</strong>' +
+        (canReview
+          ? 'Runs appear here as advisors submit packets.'
+          : 'Packets you validate appear here once you submit one.') +
+        '</div>';
       return;
     }
     if (!visible.length) {
       $('#history-body').innerHTML =
-        '<div class="empty"><strong>Nothing matches those filters</strong>Clear the search or pick another outcome.</div>';
+        '<div class="empty"><strong>Nothing matches those filters</strong>' +
+        'Clear the search or pick another outcome.</div>';
       return;
     }
 
@@ -55,25 +63,31 @@
             ? '<div class="card-sub" style="margin: 2px 0 0">' + esc(row.fileName) + '</div>'
             : '') +
           '</div></td>' +
-          '<td data-label="Client">' +
+          '<td data-label="Client"' +
+          (row.clientName ? '' : ' data-empty="1"') +
+          '>' +
           esc(row.clientName || '') +
           '</td>' +
-          '<td data-label="Contra firm">' +
-          esc(row.contraFirm || '') +
-          '</td>' +
-          '<td data-label="Outcome">' +
+          (canReview
+            ? '<td data-label="Submitted by">' + esc(row.submittedByName || row.submittedBy || '') + '</td>'
+            : '<td data-label="Contra firm">' + esc(row.contraFirm || '') + '</td>') +
+          '<td data-label="Workflow">' +
           outcome +
           '</td>' +
-          '<td class="num" data-label="Issues">' +
+          '<td class="num" data-label="Issues"' +
+          (typeof row.totalIssues === 'number' ? '' : ' data-empty="1"') +
+          '><div>' +
+          '<div>' +
           (typeof row.totalIssues === 'number' ? row.totalIssues : '') +
+          '</div>' +
           (row.lowConfidence
-            ? ' <span class="pill pill-warn"><span class="glyph">▲</span>' +
+            ? '<div style="margin-top: 4px"><span class="pill pill-warn"><span class="glyph">▲</span>' +
               row.lowConfidence +
-              ' to verify</span>'
+              ' to verify</span></div>'
             : '') +
-          '</td>' +
-          '<td class="num" data-label="Value">' +
-          esc(row.submittedValue || '') +
+          '</div></td>' +
+          '<td data-label="Review">' +
+          (row.status === 'COMPLETED' ? ATV.reviewPill(row.reviewState) : ATV.statusPill(row.status)) +
           '</td>' +
           '<td data-label="Submitted">' +
           esc(ATV.formatTime(row.createdAt)) +
@@ -85,16 +99,50 @@
 
     $('#history-body').innerHTML =
       '<div class="table-wrap"><table class="history-table data-table"><thead><tr>' +
-      '<th>Reference</th><th>Client</th><th>Contra firm</th><th>Outcome</th>' +
-      '<th class="num">Issues</th><th class="num">Value</th><th>Submitted</th>' +
+      '<th>Reference</th><th>Client</th><th>' +
+      (canReview ? 'Submitted by' : 'Contra firm') +
+      '</th><th>Workflow</th>' +
+      '<th class="num">Issues</th><th>Review</th><th>Submitted</th>' +
       '</tr></thead><tbody>' +
       body +
       '</tbody></table></div>';
   }
 
+  function load(scope) {
+    $('#history-body').innerHTML = '<div class="skeleton">Loading</div>';
+    ATV.fetchJson('/api/history?limit=200' + (scope ? '&scope=' + scope : ''))
+      .then(function (out) {
+        rows = out.rows || [];
+        if (out.note) {
+          $('#history-body').innerHTML = '<div class="notice notice-warn">' + esc(out.note) + '</div>';
+          if (!rows.length) return;
+        }
+        render();
+      })
+      .catch(function (err) {
+        if (ATV.onAuthLoss(err)) return;
+        $('#history-body').innerHTML =
+          '<div class="notice notice-bad">History could not be read: ' + esc(err.message) + '</div>';
+      });
+  }
+
   ATV.boot(function (me) {
+    canReview = Boolean(me.canReview);
     $('#filter-outcome').addEventListener('change', render);
     $('#filter-text').addEventListener('input', render);
+
+    if (canReview) {
+      $('#page-title').textContent = 'All runs';
+      $('#page-sub').textContent =
+        'Every packet submitted through this console, newest first, whoever submitted it.';
+      $('#scope-wrap').hidden = false;
+      $('#filter-scope').addEventListener('change', function () {
+        load($('#filter-scope').value);
+      });
+    } else {
+      $('#page-title').textContent = 'My runs';
+      $('#page-sub').textContent = 'Every packet you have submitted, newest first.';
+    }
 
     if (!me.historyEnabled) {
       $('#page-sub').hidden = true;
@@ -108,19 +156,6 @@
       return;
     }
 
-    ATV.fetchJson('/api/history?limit=200')
-      .then(function (out) {
-        rows = out.rows || [];
-        if (out.note) {
-          $('#history-body').innerHTML =
-            '<div class="notice notice-warn">' + esc(out.note) + '</div>';
-          if (!rows.length) return;
-        }
-        render();
-      })
-      .catch(function (err) {
-        $('#history-body').innerHTML =
-          '<div class="notice notice-bad">History could not be read: ' + esc(err.message) + '</div>';
-      });
+    load('');
   });
 })();
