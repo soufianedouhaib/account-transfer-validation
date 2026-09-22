@@ -44,6 +44,29 @@
         sub: t.unfinished && t.unfinished.count ? runs(t.unfinished.count) + ' did not finish' : ''
       }
     ];
+
+    /* Average run time. The count it is drawn from travels with it, because an
+       average over two runs and an average over two hundred are not the same
+       claim, and older runs may have no recorded time at all. */
+    var rt = report.runtime || {};
+    if (typeof rt.averageMs === 'number' && rt.runs) {
+      cells.push({
+        n: ATV.duration(rt.averageMs),
+        k: 'Average run time',
+        /* The spread is only worth the words when there is one: every run
+           landing on the same figure would read as "7.5s to 7.5s". */
+        sub:
+          runs(rt.runs) +
+          ' timed' +
+          (rt.runs > 1 &&
+          typeof rt.fastestMs === 'number' &&
+          ATV.duration(rt.fastestMs) !== ATV.duration(rt.slowestMs)
+            ? ', ' + ATV.duration(rt.fastestMs) + ' to ' + ATV.duration(rt.slowestMs)
+            : '')
+      });
+    } else {
+      cells.push({ n: '—', k: 'Average run time', sub: 'no timed runs yet' });
+    }
     return cells
       .map(function (cell) {
         return (

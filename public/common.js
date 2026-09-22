@@ -86,7 +86,8 @@
     support: '<path d="M3 7l9 6 9-6"/><rect x="3" y="5" width="18" height="14" rx="2"/>',
     signout: '<path d="M10 4H5.5A1.5 1.5 0 0 0 4 5.5v13A1.5 1.5 0 0 0 5.5 20H10"/><path d="M15 8l4 4-4 4M19 12H9"/>',
     menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
-    chevron: '<path d="M9 6l6 6-6 6"/>'
+    chevron: '<path d="M9 6l6 6-6 6"/>',
+    clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>'
   };
 
   function icon(name) {
@@ -579,6 +580,23 @@
     });
   }
 
+  /* How long the workflow ran. Seconds are what these runs are measured in, so
+     they carry one decimal under a minute, where the difference between 8.2 and
+     11.6 seconds is the whole story, and drop to whole seconds above it. */
+  function duration(ms) {
+    if (typeof ms !== 'number' || !isFinite(ms) || ms < 0) return '';
+    if (ms < 1000) return 'under a second';
+    var seconds = ms / 1000;
+    if (seconds < 60) {
+      var shown = seconds < 10 ? seconds.toFixed(1) : Math.round(seconds);
+      return shown + 's';
+    }
+    var mins = Math.floor(seconds / 60);
+    var rest = Math.round(seconds - mins * 60);
+    if (rest === 60) return mins + 1 + 'm';
+    return rest ? mins + 'm ' + rest + 's' : mins + 'm';
+  }
+
   global.ATV = {
     $: $,
     $$: $$,
@@ -601,6 +619,7 @@
     formatValue: formatValue,
     tidy: tidy,
     formatTime: formatTime,
+    duration: duration,
     ymd: ymd,
     rangeFor: rangeFor,
     rangeQuery: rangeQuery,

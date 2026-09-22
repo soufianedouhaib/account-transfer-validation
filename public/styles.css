@@ -1095,6 +1095,20 @@ td.nowrap {
   margin-top: 8px;
 }
 
+/* The workflow's own run time, sat in the meta row beside the status. */
+.run-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.run-time .ico {
+  width: 15px;
+  height: 15px;
+  color: var(--muted-2);
+}
+
 details.raw {
   margin-top: 16px;
   border: 1px solid var(--line);

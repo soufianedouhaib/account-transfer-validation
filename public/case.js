@@ -593,6 +593,19 @@
     }
     if (row && row.createdAt) bits.push('Submitted ' + esc(ATV.formatTime(row.createdAt)));
     bits.push(ATV.statusPill(status));
+    /* The workflow's own time, once it has one. Reported separately from the
+       submitted time because it answers a different question: how long the run
+       took, not how long ago it was asked for. */
+    if (row && typeof row.runtimeMs === 'number') {
+      bits.push(
+        '<span class="run-time" title="Time the workflow itself took, ' +
+          'from the first step to the last. The upload is not counted.">' +
+          ATV.icon('clock') +
+          'Ran in ' +
+          esc(ATV.duration(row.runtimeMs)) +
+          '</span>'
+      );
+    }
     // Only a finished run can be waiting for a manager. A run still going, or
     // one that crashed, says so once in the status pill and nowhere else.
     if (row && status === 'COMPLETED' && row.reviewState === 'pending') {

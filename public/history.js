@@ -107,6 +107,11 @@
           '>' +
           (typeof row.totalIssues === 'number' ? row.totalIssues : '') +
           '</td>' +
+          '<td class="num" data-label="Run time"' +
+          (typeof row.runtimeMs === 'number' ? '' : ' data-empty="1"') +
+          '>' +
+          (typeof row.runtimeMs === 'number' ? esc(ATV.duration(row.runtimeMs)) : '') +
+          '</td>' +
           '<td data-label="Review">' +
           (row.status === 'COMPLETED'
             ? ATV.reviewPill(row.reviewState)
@@ -125,7 +130,7 @@
       '<th>Reference</th><th>Client</th><th>' +
       (canReview ? 'Submitted by' : 'Contra firm') +
       '</th><th>Workflow</th>' +
-      '<th class="num">Issues</th><th>Review</th><th>Submitted</th>' +
+      '<th class="num">Issues</th><th class="num">Run time</th><th>Review</th><th>Submitted</th>' +
       '</tr></thead><tbody>' +
       body +
       '</tbody></table></div>';
