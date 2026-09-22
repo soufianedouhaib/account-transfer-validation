@@ -219,7 +219,10 @@ app.get('/api/me', function (req, res) {
     appName: 'Account Transfer Validation',
     historyEnabled: store.configured,
     configured: opus.missingEnv().length === 0,
-    demoAccounts: auth.demoAccounts(),
+    demoAccounts: {
+      advisor: auth.demoAccountsFor('advisor'),
+      reviewer: auth.demoAccountsFor('reviewer')
+    },
     support: support()
   });
 });
