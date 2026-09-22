@@ -10,10 +10,21 @@ const app = express();
 
 app.use(express.json({ limit: '1mb' }));
 app.use(auth.attach);
+/* The pages, the scripts and the stylesheet are revalidated on every request.
+   A blanket five minute cache here is how a deployed change appears not to have
+   shipped: the browser keeps serving the previous script and the fix looks like
+   it never happened. Images and sample packets are content that does not change
+   under the same name, so those keep a real cache. */
 app.use(
   express.static(path.join(__dirname, 'public'), {
     extensions: ['html'],
-    maxAge: '5m'
+    setHeaders: function (res, filePath) {
+      const cacheable = /\.(png|jpe?g|gif|svg|ico|pdf|woff2?)$/i.test(filePath);
+      res.setHeader(
+        'Cache-Control',
+        cacheable ? 'public, max-age=86400' : 'no-cache'
+      );
+    }
   })
 );
 
