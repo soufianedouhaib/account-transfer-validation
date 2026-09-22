@@ -8,6 +8,7 @@
   var $ = ATV.$;
   var esc = ATV.esc;
   var chosen = null;
+  var me = null;
 
   function humanSize(bytes) {
     if (bytes < 1024) return bytes + ' B';
@@ -150,6 +151,49 @@
       });
   }
 
+  /* Opus takes an upload and offers nothing that reads it back, so the packet
+     a manager opens has to be this console's own copy. The same bytes go up a
+     second time, in chunks, because a serverless request body and a REST store
+     request are both capped well below the 10 MB a packet may run to.
+
+     Everything here is best effort. The validation is already running by the
+     time this starts, so a store that is switched off, full or slow costs the
+     reviewer a preview and costs the submitter nothing. */
+  var PACKET_PART_BYTES = 512 * 1024;
+  var PACKET_MAX_BYTES = 20 * PACKET_PART_BYTES;
+
+  function keepPacket(caseId, file) {
+    if (!me || !me.historyEnabled) return Promise.resolve(false);
+    if (!file || !file.size || file.size > PACKET_MAX_BYTES) return Promise.resolve(false);
+
+    var parts = Math.max(1, Math.ceil(file.size / PACKET_PART_BYTES));
+    var base =
+      '/api/case/' + encodeURIComponent(caseId) + '/packet?parts=' + parts + '&bytes=' + file.size;
+
+    function sendPart(i) {
+      if (i >= parts) return Promise.resolve(true);
+      setBusy(true, parts > 1 ? 'Keeping a copy for review, ' + (i + 1) + ' of ' + parts : 'Keeping a copy for review');
+      return ATV.fetchJson(base + '&part=' + i, {
+        method: 'PUT',
+        body: file.slice(i * PACKET_PART_BYTES, (i + 1) * PACKET_PART_BYTES),
+        /* A Blob carved out of a File carries no type, and a body with no
+           Content-Type never reaches the raw parser. The packet's real type
+           travels beside it, for the reviewer's viewer to use later. */
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'x-file-type': file.type || 'application/octet-stream'
+        }
+      }).then(function () {
+        return sendPart(i + 1);
+      });
+    }
+
+    return sendPart(0).catch(function (err) {
+      if (window.console && console.warn) console.warn('Packet copy not kept: ' + err.message);
+      return false;
+    });
+  }
+
   function submit(event) {
     event.preventDefault();
     if (!chosen) return;
@@ -177,6 +221,13 @@
             fileName: chosen.name,
             title: $('#title').value
           })
+        });
+      })
+      .then(function (out) {
+        // The run is already going. Keeping the reviewer's copy is best effort
+        // from here on: a failure there must not look like a failed submission.
+        return keepPacket(out.caseId, chosen).then(function () {
+          return out;
         });
       })
       .then(function (out) {
@@ -250,7 +301,8 @@
       '</tbody></table></div>';
   }
 
-  ATV.boot(function (me) {
+  ATV.boot(function (user) {
+    me = user;
     // A reviewer account has no submit screen. Send it to the queue instead of
     // showing a form its session cannot use.
     if (!me.canSubmit) {

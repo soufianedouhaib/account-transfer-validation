@@ -213,14 +213,14 @@
 
     host.innerHTML =
       '<div class="side-top">' +
+      /* The product name alone, no logo mark. It is the link home. */
       '<a class="brand-lockup" href="' + (me.canSubmit ? '/' : '/review.html') + '" title="Account Transfer Validation">' +
-      '<img src="/logo.png" alt="Applied AI">' +
+      '<span class="label">Account Transfer Validation</span>' +
       '</a>' +
       '<button type="button" class="side-toggle" id="side-toggle" aria-label="Expand or collapse the menu">' +
       icon('chevron') +
       '</button>' +
       '</div>' +
-      '<div class="side-app"><span class="label">Account Transfer Validation</span></div>' +
       '<nav class="side-nav">' +
       links +
       '</nav>' +

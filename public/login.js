@@ -1,12 +1,12 @@
-/* Both sign in pages run this. The page says which door it is with
-   data-mode on the body, and the server checks that the account matches. */
+/* Both sign in pages run this. They differ only in their wording: either one
+   accepts any account and the server answers with the home that account's role
+   actually has. */
 
 (function () {
   'use strict';
 
   var $ = ATV.$;
   var esc = ATV.esc;
-  var mode = document.body.getAttribute('data-mode') === 'reviewer' ? 'reviewer' : 'advisor';
 
   function showError(message, redirect) {
     var box = $('#signin-error');
@@ -40,8 +40,7 @@
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         email: $('#email').value,
-        password: $('#password').value,
-        expect: mode
+        password: $('#password').value
       })
     })
       .then(function (out) {
@@ -60,27 +59,41 @@
     function (me) {
       $('#signin-form').addEventListener('submit', submit);
 
-      /* Every account in this build is a demo account. Each door lists its
-         own, and one click fills the form so nobody types a test password. */
-      var accounts = (me.demoAccounts && me.demoAccounts[mode]) || [];
+      /* Every account in this build is a demo account, and both doors list the
+         whole set: three employees, two managers and the administrator. One
+         click fills the form so nobody types a test password, and either door
+         accepts any of them, so picking a manager here signs in as a manager
+         rather than bouncing to the other page. */
+      var accounts = me.demoAccounts || [];
       if (!accounts.length) return;
 
+      var GROUPS = [
+        { role: 'advisor', title: 'Employees, submit a packet' },
+        { role: 'reviewer', title: 'Managers, review and decide' },
+        { role: 'admin', title: 'Administrator, everything' }
+      ];
+
       $('#demo-title').hidden = false;
-      $('#demo-list').innerHTML = accounts
-        .map(function (a, i) {
-          return (
-            '<button type="button" class="demo-account" data-i="' +
-            i +
-            '"><span class="who"><b>' +
-            esc(a.name) +
-            '</b><span>' +
-            esc(a.email) +
-            '</span></span><span class="pill">' +
-            esc(a.role) +
-            '</span></button>'
-          );
-        })
-        .join('');
+      $('#demo-list').innerHTML = GROUPS.map(function (group) {
+        var rows = accounts
+          .map(function (a, i) {
+            if (a.role !== group.role) return '';
+            return (
+              '<button type="button" class="demo-account" data-i="' +
+              i +
+              '"><span class="who"><b>' +
+              esc(a.name) +
+              '</b><span>' +
+              esc(a.email) +
+              '</span></span><span class="pill">' +
+              esc(a.roleLabel) +
+              '</span></button>'
+            );
+          })
+          .join('');
+        if (!rows) return '';
+        return '<div class="demo-group"><span class="demo-group-title">' + esc(group.title) + '</span>' + rows + '</div>';
+      }).join('');
 
       ATV.$$('.demo-account').forEach(function (button) {
         button.addEventListener('click', function () {

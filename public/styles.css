@@ -253,11 +253,13 @@ body.has-sidebar > .footer {
   color: inherit;
 }
 
-.brand-lockup img {
-  height: 19px;
-  width: auto;
-  display: block;
-  filter: var(--logo-filter);
+/* The rail is narrow and the product name is three words, so it wraps rather
+   than being cut off mid word by an ellipsis. */
+.brand-lockup .label {
+  font-weight: 600;
+  font-size: 13.5px;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
 }
 
 .side-toggle {
@@ -284,13 +286,10 @@ body:not(.side-collapsed) .side-toggle {
   transform: rotate(180deg);
 }
 
-.side-app {
-  padding: 0 8px 12px;
-  font-size: 12px;
-  color: var(--muted);
-  line-height: 1.3;
+.side-top {
   border-bottom: 1px solid var(--line);
   margin-bottom: 10px;
+  padding-bottom: 12px;
 }
 
 .side-nav {
@@ -392,19 +391,10 @@ body:not(.side-collapsed) .side-toggle {
 
 /* Collapsed: icons only, and nothing reflows when the labels go. */
 body.side-collapsed .label,
-body.side-collapsed .side-app {
-  display: none;
-}
-
-/* Collapsed keeps the mark, cropped out of the lockup, so the product is
-   still identifiable with the labels gone. */
+/* Collapsed, the rail is icons only, so the product name goes with the rest
+   of the labels and the toggle keeps the row. */
 body.side-collapsed .brand-lockup {
-  width: 22px;
-  overflow: hidden;
-}
-
-body.side-collapsed .brand-lockup img {
-  max-width: none;
+  display: none;
 }
 
 body.side-collapsed .sidebar {
@@ -1573,10 +1563,12 @@ details.raw pre {
     order: 1;
     padding: 0;
     flex: 1 1 auto;
+    border-bottom: 0;
+    margin-bottom: 0;
   }
 
-  .side-app {
-    display: none;
+  body.side-collapsed .brand-lockup {
+    display: flex;
   }
 
   .side-nav {
@@ -1643,8 +1635,21 @@ details.raw pre {
 
 .demo-list {
   display: grid;
-  gap: 6px;
+  gap: 14px;
   margin-top: 10px;
+}
+
+.demo-group {
+  display: grid;
+  gap: 6px;
+}
+
+.demo-group-title {
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 
 .demo-account {
@@ -1745,6 +1750,31 @@ details.raw pre {
   margin: 24px auto;
   text-align: center;
   padding: 40px 28px;
+}
+
+/* A run in flight is one card on an otherwise empty page. Left aligned title,
+   meta row and footer would leave it floating with everything else pinned to
+   the edge, so the whole column centres until the decision arrives. */
+body.is-waiting .page {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+body.is-waiting .page-head {
+  text-align: center;
+}
+
+body.is-waiting .meta-row {
+  justify-content: center;
+}
+
+body.is-waiting .footer {
+  justify-content: center;
+}
+
+body.is-waiting .waiting {
+  margin-top: 0;
 }
 
 .waiting .spinner {

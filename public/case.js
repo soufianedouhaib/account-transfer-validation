@@ -259,9 +259,34 @@
 
   /* ---------------------------- the packet ---------------------------- */
 
+  /* While the run is in flight the page is one card and nothing else, so the
+     title, the meta row and the footer are centred with it rather than being
+     pinned to the left of an otherwise empty screen. */
+  function setWaiting(on) {
+    document.body.classList[on ? 'add' : 'remove']('is-waiting');
+  }
+
   function documentHtml(row) {
     if (!row || !row.hasDocument) return '';
     var url = '/api/case/' + encodeURIComponent(caseId) + '/document';
+
+    /* Opus keeps no readable copy of an uploaded file, so a run submitted
+       before this console started keeping its own has nothing to show. Saying
+       that plainly beats an iframe rendering the server's error as raw JSON. */
+    if (!row.packetKept) {
+      return (
+        '<section class="card">' +
+        '<div class="card-head"><h2>The submitted packet</h2>' +
+        (row.fileName ? '<span class="pill"><span class="glyph">▪</span>' + esc(row.fileName) + '</span>' : '') +
+        '</div>' +
+        '<div class="empty"><strong>No packet was kept for this run</strong>' +
+        'It was submitted before this console began keeping its own copy. Everything the ' +
+        'workflow read from the documents is on this page; the file itself has to come from ' +
+        'the person who sent it.</div>' +
+        '</section>'
+      );
+    }
+
     var name = row.fileName || 'packet';
     var ext = (name.split('.').pop() || '').toLowerCase();
     var viewer = '';
@@ -465,6 +490,7 @@
 
     $('#result').hidden = false;
     $('#running').hidden = true;
+    setWaiting(false);
     $('#failed').hidden = true;
     $('#actions').hidden = false;
     afterTerminal(payload);
@@ -503,6 +529,7 @@
       supportCardHtml(payload);
     $('#failed').hidden = false;
     $('#running').hidden = true;
+    setWaiting(false);
     $('#result').hidden = true;
     $('#actions').hidden = false;
     $('#copy-json').hidden = true;
@@ -588,6 +615,7 @@
         renderMeta(payload.row, payload.status);
         if (!payload.terminal) {
           $('#running').hidden = false;
+          setWaiting(true);
           $('#running-note').textContent =
             'Reading the documents and running the checks. This usually takes a minute or two. ' +
             'Elapsed ' +
@@ -602,6 +630,7 @@
       .catch(function (err) {
         if (ATV.onAuthLoss(err)) return;
         $('#running').hidden = true;
+        setWaiting(false);
         $('#failed').hidden = false;
         $('#actions').hidden = false;
         $('#copy-json').hidden = true;
@@ -628,6 +657,7 @@
 
     if (!caseId) {
       $('#running').hidden = true;
+      setWaiting(false);
       $('#failed').hidden = false;
       $('#failed').innerHTML =
         '<div class="card"><div class="empty"><strong>No case selected</strong>' +
@@ -658,11 +688,13 @@
         if (payload.result) return renderResult(payload);
         if (payload.terminal) return renderFailure(payload);
         $('#running').hidden = false;
+        setWaiting(true);
         poll();
       })
       .catch(function (err) {
         if (ATV.onAuthLoss(err)) return;
         $('#running').hidden = false;
+        setWaiting(true);
         poll();
       });
   });
