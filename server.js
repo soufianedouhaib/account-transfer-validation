@@ -83,6 +83,11 @@ function toRow(rec) {
     lowConfidence: typeof audit.low_confidence === 'number' ? audit.low_confidence : null,
     createdAt: rec.createdAt || null,
     completedAt: rec.completedAt || null,
+    /* The workflow's own wall clock time, from the Opus audit log. Not the time
+       from submit to decision: that would include the upload and the wait for
+       somebody to look at the page. */
+    runtimeMs: typeof rec.runtimeMs === 'number' ? rec.runtimeMs : null,
+    runtimeNodes: typeof rec.runtimeNodes === 'number' ? rec.runtimeNodes : null,
     failure: rec.failure || null,
     submittedBy: (rec.owner && rec.owner.email) || null,
     submittedByName: (rec.owner && rec.owner.name) || null,
@@ -258,7 +263,11 @@ app.get('/api/health', async function (req, res) {
       target: process.env.VERCEL_ENV || 'local',
       deployment: process.env.VERCEL_URL || null,
       commit: (process.env.VERCEL_GIT_COMMIT_SHA || '').slice(0, 7) || null,
-      startedAt: BOOTED_AT
+      startedAt: BOOTED_AT,
+      /* Named so a deployed build can be told apart from an older one without
+         signing in. A missing name here is the first thing to check when a
+         screen is not showing what it should. */
+      features: ['packet-copy', 'run-time', 'run-time-retry']
     },
     history: {
       configured: store.configured,
@@ -375,6 +384,52 @@ app.post('/api/submit', requireSubmitter, async function (req, res) {
  * Reading one case                                                    *
  * ------------------------------------------------------------------ */
 
+/**
+ * Reads the workflow's own run time from Opus and puts it on the record.
+ *
+ * This is deliberately not measured here. The time between this server calling
+ * execute and noticing a terminal status includes the poll interval and any gap
+ * before somebody opened the page, so a run finished overnight would read as
+ * eight hours. The audit log knows when the first node started and the last one
+ * ended, and nothing else does.
+ *
+ * A failed lookup is retried. Opus writes the audit a moment after the status
+ * flips to COMPLETED, so the very first attempt, made the instant this server
+ * notices the run has ended, can come back empty. Recording that emptiness as
+ * the answer would blank the column permanently for a run that finished
+ * perfectly well, which is exactly what an earlier version of this did. So a
+ * blank is provisional: it is retried on later reads, a handful of times, and
+ * only then left alone.
+ *
+ * Answers true when the record changed, so the caller knows to save it. Never
+ * throws: a missing audit is a blank run time, not a failed page.
+ */
+const RUNTIME_MAX_ATTEMPTS = 6;
+
+function runtimeWanted(rec) {
+  if (!rec) return false;
+  // A run still in flight has nothing to time yet.
+  if (!rec.result && !rec.failure) return false;
+  if (typeof rec.runtimeMs === 'number') return false;
+  return (Number(rec.runtimeAttempts) || 0) < RUNTIME_MAX_ATTEMPTS;
+}
+
+async function attachRuntime(rec) {
+  if (!runtimeWanted(rec)) return false;
+  let runtime = null;
+  try {
+    runtime = await opus.runtime(rec.caseId);
+  } catch (e) {
+    runtime = null;
+  }
+  rec.runtimeAttempts = (Number(rec.runtimeAttempts) || 0) + 1;
+  rec.runtimeMs = runtime ? runtime.ms : null;
+  rec.runtimeNodes = runtime ? runtime.nodes : null;
+  rec.workflowStartedAt = runtime ? runtime.startedAt : null;
+  rec.workflowFinishedAt = runtime ? runtime.finishedAt : null;
+  return true;
+}
+
 function casePayload(rec, user) {
   return {
     status: rec.status,
@@ -436,6 +491,7 @@ app.get('/api/status/:caseId', auth.requireUser, async function (req, res) {
         rec.failure = 'The run ended with status ' + status + '.';
       }
       rec.completedAt = rec.completedAt || new Date().toISOString();
+      await attachRuntime(rec);
       await saveRecord(rec);
     }
 
@@ -453,6 +509,8 @@ app.get('/api/case/:caseId', auth.requireUser, async function (req, res) {
     if (!rec || !maySee(req.user, rec)) {
       return res.status(404).json({ error: 'No such case.' });
     }
+    // Records written before run time was recorded get it on first read, once.
+    if (await attachRuntime(rec)) await saveRecord(rec);
     res.json(casePayload(rec, req.user));
   } catch (err) {
     sendError(res, err);
@@ -599,12 +657,31 @@ function rangeFromQuery(query) {
   return { from: clean(query.from), to: clean(query.to) };
 }
 
+/* Run time was added after these lists existed, so records written before it
+   carry none. Rather than leave them blank for good, each list request fills in
+   a few of the oldest gaps: a handful of audit calls, in parallel, capped so a
+   page load never turns into three hundred requests to Opus. A couple of visits
+   and the backlog is gone. */
+const RUNTIME_BACKFILL_PER_REQUEST = 6;
+
 async function rowsFor(ids) {
-  const rows = [];
+  const records = [];
   for (let i = 0; i < ids.length; i++) {
     const rec = await loadRecord(ids[i]);
-    if (rec) rows.push(toRow(rec));
+    if (rec) records.push(rec);
   }
+
+  const missing = records.filter(runtimeWanted).slice(0, RUNTIME_BACKFILL_PER_REQUEST);
+
+  if (missing.length) {
+    await Promise.all(
+      missing.map(async function (rec) {
+        if (await attachRuntime(rec)) await saveRecord(rec);
+      })
+    );
+  }
+
+  const rows = records.map(toRow);
   // Recording a decision rewrites the record, which would otherwise float that
   // run to the top of the index. Submission time is what "newest first" means.
   rows.sort(function (a, b) {
@@ -721,6 +798,8 @@ const CSV_COLUMNS = [
   ['valueAmount', 'Amount'],
   ['valueCurrency', 'Currency'],
   ['status', 'Run status'],
+  // Seconds rather than milliseconds: a spreadsheet column people will average.
+  ['runtimeSeconds', 'Workflow run time (s)'],
   ['verdict', 'Workflow verdict'],
   ['totalIssues', 'Issues'],
   ['lowConfidence', 'Low confidence reads'],
@@ -746,8 +825,12 @@ app.get('/api/export.csv', auth.requireReviewer, async function (req, res) {
     }).join(',');
     const body = rows
       .map(function (row) {
+        const cells = Object.assign({}, row, {
+          runtimeSeconds:
+            typeof row.runtimeMs === 'number' ? Math.round(row.runtimeMs / 100) / 10 : null
+        });
         return CSV_COLUMNS.map(function (c) {
-          return csvCell(row[c[0]]);
+          return csvCell(cells[c[0]]);
         }).join(',');
       })
       .join('\n');
@@ -831,6 +914,39 @@ app.get('/api/report', auth.requireReviewer, async function (req, res) {
       blank()
     );
 
+    /* Average workflow run time over the period. Only runs with a recorded
+       time count, and the count travels with the average so the number is
+       never read as covering runs it does not. */
+    const timed = rows.filter(function (row) {
+      return typeof row.runtimeMs === 'number' && row.runtimeMs >= 0;
+    });
+    const runtime = {
+      runs: timed.length,
+      averageMs: timed.length
+        ? Math.round(
+            timed.reduce(function (n, row) {
+              return n + row.runtimeMs;
+            }, 0) / timed.length
+          )
+        : null,
+      fastestMs: timed.length
+        ? Math.min.apply(
+            null,
+            timed.map(function (r) {
+              return r.runtimeMs;
+            })
+          )
+        : null,
+      slowestMs: timed.length
+        ? Math.max.apply(
+            null,
+            timed.map(function (r) {
+              return r.runtimeMs;
+            })
+          )
+        : null
+    };
+
     res.json({
       configured: true,
       range: range,
@@ -838,6 +954,7 @@ app.get('/api/report', auth.requireReviewer, async function (req, res) {
       currencies: currencyList,
       months: months,
       totals: totals,
+      runtime: runtime,
       runs: rows.length
     });
   } catch (err) {
