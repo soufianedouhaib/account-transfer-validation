@@ -16,7 +16,7 @@ server.js          Express app, exports `app`. Holds the key. All /api routes.
 api/index.js       module.exports = require('../server')   <- the Vercel entry point
 lib/opus.js        the only file that calls Opus. Variable ids live here as constants.
 lib/store.js       optional history storage, KV REST or Redis over TCP
-lib/auth.js        the seven demo accounts, roles, and the signed session cookie
+lib/auth.js        the six demo accounts, roles, and the signed session cookie
 public/            eight pages, one script per page, one stylesheet
 public/samples/    three sample packets, so a tester needs no file of their own
 vercel.json        rewrites /api/(.*) to /api/index.js
@@ -41,8 +41,11 @@ Six demo accounts, seeded in `lib/auth.js`:
 | Marcus Bell | manager2@aaico.demo | Manager | Manager2-2026 |
 | Nadia Farouk | admin@aaico.demo | Administrator | Admin-2026 |
 
-Each door lists its own accounts, and one click fills the email and the
-password. The employee door never shows a manager or admin account.
+Both doors list all six accounts, grouped by role, and one click fills the
+email and the password. Either door accepts any of them: picking a manager on
+the employee page signs in as a manager and lands on the transfer requests,
+rather than bouncing back with an error while holding correct credentials. The
+two pages differ only in their wording.
 
 Replace the whole set without touching code by setting `APP_USERS`:
 
@@ -81,6 +84,24 @@ presigned URL, `POST /case`, `POST /case/{id}/execute`, poll
 `GET /case/{id}/status`, then `GET /case/{id}/results`. Results answer `202`
 until the case reaches a terminal status.
 
+### There is no way to read a file back
+
+The Opus file API has two endpoints, both for uploading. `fileUrl` is described
+as a permanent URL, but it is an identifier to quote in an execute call, not
+something that answers a `GET`: `files.opus.com` serves `/upload?token=` with a
+five minute JWT and `/download?token=` with a token nothing mints, and the
+media path itself answers `404` to the service key, to a browser session and to
+an anonymous request alike. `accessScope` takes `workspace` or `unlisted` and
+changes neither.
+
+So the packet a manager opens is this console's own copy. The browser sends the
+same bytes a second time, to `PUT /api/case/{id}/packet`, in 512 KB chunks,
+because both a serverless request body and a REST store request are capped well
+below the 10 MB a packet may run to. They are stored base64 with a ninety day
+expiry and reassembled by `GET /api/case/{id}/document`. It is best effort: the
+validation is already running by then, so a store that is off or full costs a
+preview and nothing else. A run with no kept copy says so on the case page.
+
 All of that is in `lib/opus.js`. If the workflow changes, the variable ids at
 the top of that file are the only thing to edit.
 
@@ -93,9 +114,21 @@ the top of that file are the only thing to edit.
    variable or connecting a store does nothing at all until the next deploy.
 4. Open `/api/health`. It reports which variables are missing and whether
    history storage is reachable. **Check `serviceKeyLength` there: the Opus
-   service key is 97 characters including its leading underscore.** A key that
-   is one character short is the usual cause of `Opus rejected this server's
-   service key`, because the underscore is easy to drop when pasting.
+   service key is 97 characters including its leading underscore.**
+
+### The dropped underscore
+
+An Opus key starts with `_`, which is the single easiest character to lose when
+copying a value into a hosting dashboard: a double click selects the word and
+leaves the underscore behind. The result is a `401 Invalid or expired API key`
+that reads like a rotated key rather than a typo.
+
+The client handles it. A key that does not start with an underscore gets exactly
+one retry with the underscore restored, and whichever form Opus accepts is
+remembered for the life of the process. `/api/health` reports
+`serviceKeyRepaired: true` when that happened, so the real fix, correcting the
+variable, is still visible rather than hidden. Nothing else about the key is
+guessed, and leading or trailing whitespace is trimmed for the same reason.
 
 ### History storage, optional
 
@@ -167,8 +200,10 @@ defaults to `support@opus.com`.
   workflow quotes firm records verbatim, so the masking cannot be left to it.
 - Raw workflow output and the copy JSON button are reviewer tools and are not
   rendered for advisors.
-- The submitted packet is fetched server side with the service key and streamed
-  to the browser, so a reviewer never needs a sign in of their own to read it.
+- The submitted packet is served from this console's own copy, so a reviewer
+  never needs an Opus sign in of their own to read it. Only the person who
+  submitted a case may attach its packet, and only before a decision is
+  recorded.
 - A decision needs a note unless it is an approval, and a run that never
   finished is kept out of the waiting count rather than being offered for
   approval.

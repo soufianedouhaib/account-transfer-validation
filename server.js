@@ -75,7 +75,11 @@ function toRow(rec) {
     failure: rec.failure || null,
     submittedBy: (rec.owner && rec.owner.email) || null,
     submittedByName: (rec.owner && rec.owner.name) || null,
-    hasDocument: Boolean(rec.fileUrl),
+    // A packet is readable only when this server kept its own copy. Opus takes
+    // uploads and has no endpoint that gives one back, so a stored fileUrl on
+    // its own proves nothing about what a reviewer can open.
+    hasDocument: Boolean(rec.fileUrl) || Boolean(rec.packet && rec.packet.parts),
+    packetKept: Boolean(rec.packet && rec.packet.parts),
     reviewState: review ? review.decision : 'pending',
     reviewNote: review ? review.note || null : null,
     reviewedBy: review ? review.by || null : null,
@@ -172,20 +176,10 @@ app.post('/api/login', function (req, res) {
   if (!user) {
     return res.status(401).json({ error: 'That email and password do not match an account.' });
   }
-  // The reviewer page asks for a reviewer. An advisor who lands there is sent
-  // to the right door rather than silently signed in to a screen they cannot use.
-  if (body.expect === 'reviewer' && !auth.canReview(user)) {
-    return res.status(403).json({
-      error: 'That is an employee account. Use the employee sign in.',
-      redirect: '/login.html'
-    });
-  }
-  if (body.expect === 'advisor' && auth.canReview(user) && user.role !== 'admin') {
-    return res.status(403).json({
-      error: 'That is a manager account. Use the manager sign in.',
-      redirect: '/review-login.html'
-    });
-  }
+  /* Either door takes any account. The two pages exist for their wording, not
+     as a gate: an account that lands on the other one is signed in and sent to
+     the home its role actually has, which is far less annoying than being
+     bounced back with an error while holding correct credentials. */
   auth.setCookie(req, res, auth.issue(user));
   res.json({
     signedIn: true,
@@ -214,10 +208,7 @@ app.get('/api/me', function (req, res) {
     appName: 'Account Transfer Validation',
     historyEnabled: store.configured,
     configured: opus.missingEnv().length === 0,
-    demoAccounts: {
-      advisor: auth.demoAccountsFor('advisor'),
-      reviewer: auth.demoAccountsFor('reviewer')
-    },
+    demoAccounts: auth.demoAccounts(),
     support: support()
   });
 });
@@ -240,7 +231,8 @@ app.get('/api/health', async function (req, res) {
     ok: missing.length === 0,
     missingEnv: missing,
     seenEnvNames: seenEnvNames,
-    serviceKeyLength: (process.env.OPUS_SERVICE_KEY || '').length,
+    serviceKeyLength: opus.storedKeyLength(),
+    serviceKeyRepaired: opus.keyWasRepaired(),
     workflowId: opus.WORKFLOW_ID,
     baseUrl: opus.BASE,
     accounts: {
@@ -453,10 +445,79 @@ app.get('/api/case/:caseId', auth.requireUser, async function (req, res) {
   }
 });
 
+/* ------------------------------------------------------------------ *
+ * The submitted packet                                                *
+ * ------------------------------------------------------------------ *
+ *
+ * Opus has endpoints for uploading a file and none at all for reading one
+ * back. Its fileUrl is an identifier to quote in an execute call, not a URL
+ * that answers a GET: files.opus.com serves /upload with a short lived token
+ * and nothing else, so the reviewer's copy of the packet has to come from
+ * here.
+ *
+ * So the browser sends the same bytes a second time, to this server, right
+ * after the case starts. They are kept in the history store in base64 chunks,
+ * because a REST store caps a single request well below a 10 MB packet, and
+ * because a serverless request body is capped too. One manifest on the record
+ * says how many chunks there are.
+ */
+
+const PACKET_PART_BYTES = 512 * 1024; // raw bytes per chunk, ~683 KB as base64
+const PACKET_MAX_PARTS = 20; // 10 MB, which is the Opus limit as well
+const PACKET_TTL_SECONDS = 90 * 24 * 3600;
+
+function packetKey(caseId, part) {
+  return 'atv:packet:' + caseId + ':' + part;
+}
+
+/** Step 4. The reviewer's copy of the packet, chunk by chunk. */
+app.put(
+  '/api/case/:caseId/packet',
+  requireSubmitter,
+  express.raw({ type: '*/*', limit: '1mb' }),
+  async function (req, res) {
+    const caseId = String(req.params.caseId);
+    const part = Number(req.query.part);
+    const parts = Number(req.query.parts);
+    if (!store.configured) {
+      return res.status(503).json({ error: 'History storage is not switched on.' });
+    }
+    if (!(parts >= 1 && parts <= PACKET_MAX_PARTS) || !(part >= 0 && part < parts)) {
+      return res.status(400).json({ error: 'That is not a valid chunk.' });
+    }
+    if (!req.body || !req.body.length) return res.status(400).json({ error: 'Empty chunk.' });
+    try {
+      const rec = await loadRecord(caseId);
+      // Only the person who submitted it may attach the packet, and only while
+      // no decision has been recorded against it.
+      if (!rec || !rec.owner || rec.owner.email !== req.user.email) {
+        return res.status(404).json({ error: 'No such case.' });
+      }
+      if (rec.review) return res.status(409).json({ error: 'This case has already been decided.' });
+
+      await store.setText(packetKey(caseId, part), req.body.toString('base64'), PACKET_TTL_SECONDS);
+
+      if (part === parts - 1) {
+        rec.packet = {
+          parts: parts,
+          type: String(req.get('x-file-type') || 'application/octet-stream').slice(0, 100),
+          bytes: Number(req.query.bytes) || null,
+          storedAt: new Date().toISOString()
+        };
+        await saveRecord(rec);
+      }
+      res.json({ ok: true, part: part, parts: parts });
+    } catch (err) {
+      sendError(res, err);
+    }
+  }
+);
+
 /**
- * The submitted packet, fetched server side so the reviewer never needs an Opus
- * session of their own. The service key is tried first; some file URLs are
- * presigned and reject an extra auth header, so a plain fetch is the fallback.
+ * The submitted packet, read back for whoever may see the case, so a reviewer
+ * never needs an Opus sign in of their own. The kept copy comes first; the
+ * stored fileUrl is only tried as a fallback, for records written before this
+ * server kept copies and for environments where that URL is fetchable.
  */
 app.get('/api/case/:caseId/document', auth.requireUser, async function (req, res) {
   const caseId = String(req.params.caseId);
@@ -465,46 +526,38 @@ app.get('/api/case/:caseId/document', auth.requireUser, async function (req, res
     if (!rec || !maySee(req.user, rec)) {
       return res.status(404).json({ error: 'No such case.' });
     }
-    if (!rec.fileUrl) {
-      return res.status(404).json({ error: 'No document was stored for this case.' });
-    }
 
-    let upstream = null;
-    const attempts = [
-      { 'x-service-key': process.env.OPUS_SERVICE_KEY || '' },
-      {}
-    ];
-    for (let i = 0; i < attempts.length; i++) {
-      try {
-        const candidate = await fetch(rec.fileUrl, { headers: attempts[i] });
-        if (candidate.ok) {
-          upstream = candidate;
-          break;
+    if (rec.packet && rec.packet.parts) {
+      const chunks = [];
+      for (let i = 0; i < rec.packet.parts; i++) {
+        const text = await store.getText(packetKey(caseId, i));
+        if (!text) {
+          return res.status(410).json({
+            error: 'The kept copy of this packet has expired.',
+            expired: true
+          });
         }
-        upstream = candidate;
-      } catch (e) {
-        upstream = null;
+        chunks.push(Buffer.from(text, 'base64'));
       }
-    }
-    if (!upstream || !upstream.ok) {
-      return res.status(502).json({
-        error:
-          'The stored document could not be fetched' +
-          (upstream ? ' (status ' + upstream.status + ')' : '') +
-          '.',
-        fileUrl: rec.fileUrl
-      });
+      const body = Buffer.concat(chunks);
+      res.setHeader('Content-Type', rec.packet.type || 'application/octet-stream');
+      res.setHeader(
+        'Content-Disposition',
+        'inline; filename="' + String(rec.fileName || 'packet').replace(/[^\w.\- ]/g, '_') + '"'
+      );
+      res.setHeader('Cache-Control', 'private, max-age=300');
+      return res.send(body);
     }
 
-    const type = upstream.headers.get('content-type') || 'application/octet-stream';
-    const buffer = Buffer.from(await upstream.arrayBuffer());
-    res.setHeader('Content-Type', type);
-    res.setHeader(
-      'Content-Disposition',
-      'inline; filename="' + String(rec.fileName || 'packet').replace(/[^\w.\- ]/g, '_') + '"'
-    );
-    res.setHeader('Cache-Control', 'private, max-age=300');
-    res.send(buffer);
+    /* No stored copy means there is nothing to serve. Opus has upload
+       endpoints and no download endpoint at all, so the fileUrl on the record
+       cannot be fetched back, by this server or by anyone else. */
+    res.status(404).json({
+      error:
+        'No packet was kept for this case. Opus has no endpoint that reads an uploaded file ' +
+        'back, so only runs submitted after this console began keeping its own copy can be ' +
+        'opened here.'
+    });
   } catch (err) {
     sendError(res, err);
   }
