@@ -415,19 +415,25 @@ function runtimeWanted(rec) {
 }
 
 async function attachRuntime(rec) {
-  if (!runtimeWanted(rec)) return false;
+  if (!runtimeWanted(rec)) return { changed: false, busy: false };
+
   let runtime = null;
   try {
     runtime = await opus.runtime(rec.caseId);
-  } catch (e) {
-    runtime = null;
+  } catch (err) {
+    /* Opus was busy or unreachable. That says nothing about this case, so the
+       record is left exactly as it was: no blank written, no attempt spent.
+       The caller is told, so a batch stops rather than burning the rest of the
+       rate limit on requests that will be refused too. */
+    return { changed: false, busy: true };
   }
+
   rec.runtimeAttempts = (Number(rec.runtimeAttempts) || 0) + 1;
   rec.runtimeMs = runtime ? runtime.ms : null;
   rec.runtimeNodes = runtime ? runtime.nodes : null;
   rec.workflowStartedAt = runtime ? runtime.startedAt : null;
   rec.workflowFinishedAt = runtime ? runtime.finishedAt : null;
-  return true;
+  return { changed: true, busy: false };
 }
 
 function casePayload(rec, user) {
@@ -510,7 +516,7 @@ app.get('/api/case/:caseId', auth.requireUser, async function (req, res) {
       return res.status(404).json({ error: 'No such case.' });
     }
     // Records written before run time was recorded get it on first read, once.
-    if (await attachRuntime(rec)) await saveRecord(rec);
+    if ((await attachRuntime(rec)).changed) await saveRecord(rec);
     res.json(casePayload(rec, req.user));
   } catch (err) {
     sendError(res, err);
@@ -658,11 +664,14 @@ function rangeFromQuery(query) {
 }
 
 /* Run time was added after these lists existed, so records written before it
-   carry none. Rather than leave them blank for good, each list request fills in
-   a few of the oldest gaps: a handful of audit calls, in parallel, capped so a
-   page load never turns into three hundred requests to Opus. A couple of visits
-   and the backlog is gone. */
-const RUNTIME_BACKFILL_PER_REQUEST = 6;
+   carry none. Each list request fills in a few of the gaps.
+
+   One at a time, and only three, because Opus rate limits on a burst bucket
+   shared with every other call this console makes. Six in parallel on a page
+   that also polls a running case is enough to trip it, and a refusal used to
+   be recorded as "this run has no time". The batch stops at the first sign of
+   a busy Opus and picks up on the next visit. */
+const RUNTIME_BACKFILL_PER_REQUEST = 3;
 
 async function rowsFor(ids) {
   const records = [];
@@ -672,13 +681,10 @@ async function rowsFor(ids) {
   }
 
   const missing = records.filter(runtimeWanted).slice(0, RUNTIME_BACKFILL_PER_REQUEST);
-
-  if (missing.length) {
-    await Promise.all(
-      missing.map(async function (rec) {
-        if (await attachRuntime(rec)) await saveRecord(rec);
-      })
-    );
+  for (let i = 0; i < missing.length; i++) {
+    const outcome = await attachRuntime(missing[i]);
+    if (outcome.busy) break;
+    if (outcome.changed) await saveRecord(missing[i]);
   }
 
   const rows = records.map(toRow);
