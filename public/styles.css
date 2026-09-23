@@ -323,6 +323,11 @@ body.side-open .side-toggle {
   gap: 2px;
   min-height: 0;
   overflow-y: auto;
+  /* Must be stated. A box with one axis set to auto computes the other from
+     visible to auto as well, and since every row in here is laid out at the
+     open width, a shut rail would grow a horizontal scrollbar under the last
+     link. The rail clips the overhang; nothing should offer to scroll it. */
+  overflow-x: hidden;
 }
 
 .side-nav a,
