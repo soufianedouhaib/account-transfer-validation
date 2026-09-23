@@ -1338,6 +1338,12 @@ details.raw pre {
   display: none;
 }
 
+/* A sign in page is one centred card and nothing else, so the footer line
+   centres under it rather than sitting off in the bottom left corner. */
+.signin-page .footer {
+  justify-content: center;
+}
+
 /* ------------------------------ decisions ------------------------------- */
 
 .choices {
