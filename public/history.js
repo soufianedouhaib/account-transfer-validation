@@ -33,6 +33,9 @@
   }
 
   function matches(row) {
+    var who = $('#filter-who').value;
+    if (who && row.submittedBy !== who) return false;
+
     var outcome = $('#filter-outcome').value;
     if (outcome === 'IGO' && row.verdict !== 'IGO') return false;
     if (outcome === 'NIGO' && row.verdict !== 'NIGO') return false;
@@ -41,12 +44,49 @@
     var text = $('#filter-text').value.trim().toLowerCase();
     if (!text) return true;
     return (
-      [row.title, row.fileName, row.clientName, row.contraFirm, row.submittedBy, row.caseId]
+      /* Search reads the employee's name as well as their email: a manager
+         looking for Daniel's runs types "Daniel", not the address. */
+      [
+        row.title,
+        row.fileName,
+        row.clientName,
+        row.contraFirm,
+        row.submittedByName,
+        row.submittedBy,
+        row.caseId
+      ]
         .filter(Boolean)
         .join(' ')
         .toLowerCase()
         .indexOf(text) !== -1
     );
+  }
+
+
+  /* The people who have actually submitted something in this period, so the
+     list is never a roster of names with nothing behind them. Built from the
+     rows on screen and rebuilt whenever they change, with the current choice
+     kept if that person is still in the list. */
+  function fillWhoFilter() {
+    var select = $('#filter-who');
+    if (!select || select.hidden) return;
+    var seen = {};
+    rows.forEach(function (row) {
+      if (!row.submittedBy) return;
+      if (!seen[row.submittedBy]) seen[row.submittedBy] = row.submittedByName || row.submittedBy;
+    });
+    var emails = Object.keys(seen).sort(function (a, b) {
+      return seen[a].localeCompare(seen[b]);
+    });
+    var chosen = select.value;
+    select.innerHTML =
+      '<option value="">Anyone</option>' +
+      emails
+        .map(function (email) {
+          return '<option value="' + esc(email) + '">' + esc(seen[email]) + '</option>';
+        })
+        .join('');
+    select.value = emails.indexOf(chosen) === -1 ? '' : chosen;
   }
 
   function render() {
@@ -152,6 +192,7 @@
           $('#history-body').innerHTML = '<div class="notice notice-warn">' + esc(out.note) + '</div>';
           if (!rows.length) return;
         }
+        fillWhoFilter();
         render();
       })
       .catch(function (err) {
@@ -176,6 +217,10 @@
 
     if (canReview) {
       $('#export-link').hidden = false;
+      /* An employee's list is their own work only, so a "who" filter there
+         would offer a choice of one. */
+      $('#filter-who').hidden = false;
+      $('#filter-who').addEventListener('change', render);
       $('#page-title').textContent = 'All runs';
       $('#page-sub').textContent =
         'Every packet submitted through this console, newest first, whoever submitted it.';

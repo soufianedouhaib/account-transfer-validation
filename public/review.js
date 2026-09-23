@@ -42,18 +42,58 @@
     var state = $('#filter-state').value;
     if (state && stateOf(row) !== state) return false;
 
+    var who = $('#filter-who').value;
+    if (who && row.submittedBy !== who) return false;
+
     var verdict = $('#filter-verdict').value;
     if (verdict && row.verdict !== verdict) return false;
 
     var text = $('#filter-text').value.trim().toLowerCase();
     if (!text) return true;
     return (
-      [row.title, row.fileName, row.clientName, row.contraFirm, row.submittedBy, row.caseId]
+      /* Search reads the employee's name as well as their email: a manager
+         looking for Daniel's runs types "Daniel", not the address. */
+      [
+        row.title,
+        row.fileName,
+        row.clientName,
+        row.contraFirm,
+        row.submittedByName,
+        row.submittedBy,
+        row.caseId
+      ]
         .filter(Boolean)
         .join(' ')
         .toLowerCase()
         .indexOf(text) !== -1
     );
+  }
+
+
+  /* The people who have actually submitted something in this period, so the
+     list is never a roster of names with nothing behind them. Built from the
+     rows on screen and rebuilt whenever they change, with the current choice
+     kept if that person is still in the list. */
+  function fillWhoFilter() {
+    var select = $('#filter-who');
+    if (!select || select.hidden) return;
+    var seen = {};
+    rows.forEach(function (row) {
+      if (!row.submittedBy) return;
+      if (!seen[row.submittedBy]) seen[row.submittedBy] = row.submittedByName || row.submittedBy;
+    });
+    var emails = Object.keys(seen).sort(function (a, b) {
+      return seen[a].localeCompare(seen[b]);
+    });
+    var chosen = select.value;
+    select.innerHTML =
+      '<option value="">Anyone</option>' +
+      emails
+        .map(function (email) {
+          return '<option value="' + esc(email) + '">' + esc(seen[email]) + '</option>';
+        })
+        .join('');
+    select.value = emails.indexOf(chosen) === -1 ? '' : chosen;
   }
 
   function renderStats() {
@@ -191,6 +231,7 @@
           if (!rows.length) return;
         }
         $('#queue-stats').hidden = false;
+        fillWhoFilter();
         renderStats();
         render();
       })
@@ -205,8 +246,12 @@
 
   ATV.boot(
     function () {
+      /* Every account that reaches this page can see everyone's work, so the
+         who filter is always on here. */
+      $('#filter-who').hidden = false;
       $('#filter-state').addEventListener('change', render);
       $('#filter-verdict').addEventListener('change', render);
+      $('#filter-who').addEventListener('change', render);
       $('#filter-text').addEventListener('input', render);
       ['#filter-preset', '#filter-month', '#filter-from', '#filter-to'].forEach(function (sel) {
         $(sel).addEventListener('change', function () {

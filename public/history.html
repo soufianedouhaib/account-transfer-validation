@@ -26,6 +26,7 @@
           </span>
           <select id="filter-preset" aria-label="Period">
             <option value="">All time</option>
+            <option value="today">Today</option>
             <option value="this-month">This month</option>
             <option value="last-month">Last month</option>
             <option value="last-7">Last 7 days</option>
@@ -37,13 +38,16 @@
             <input type="date" id="filter-from" aria-label="From" />
             <input type="date" id="filter-to" aria-label="To" />
           </span>
+          <select id="filter-who" aria-label="Filter by who submitted it" hidden>
+            <option value="">Anyone</option>
+          </select>
           <select id="filter-outcome" aria-label="Filter by outcome">
             <option value="">All outcomes</option>
             <option value="IGO">In good order</option>
             <option value="NIGO">Not in good order</option>
             <option value="UNFINISHED">Did not finish</option>
           </select>
-          <input type="search" id="filter-text" placeholder="Search runs" />
+          <input type="search" id="filter-text" placeholder="Search client, employee or reference" />
           <span class="spacer"></span>
           <span class="pill" id="count-pill">0 runs</span>
           <a class="btn btn-quiet btn-small" id="export-link" href="/api/export.csv" hidden>Export CSV</a>

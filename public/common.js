@@ -580,6 +580,10 @@
   }
 
   function rangeFor(preset, month) {
+    if (preset === 'today') {
+      var t0 = new Date();
+      return { from: ymd(t0), to: ymd(t0) };
+    }
     if (preset === 'this-month') return monthRange(0);
     if (preset === 'last-month') return monthRange(-1);
     if (preset === 'last-7') {
