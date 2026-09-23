@@ -158,25 +158,66 @@
 
   var SIDE_KEY = 'atv-sidebar';
 
-  function sidebarCollapsed() {
-    var saved = null;
-    try {
-      saved = localStorage.getItem(SIDE_KEY);
-    } catch (e) {
-      saved = null;
-    }
-    if (saved) return saved === 'collapsed';
-    // No preference yet: a phone starts with the menu closed, a desktop open.
-    return window.innerWidth < 861;
+  /* The rail is a narrow strip of icons that opens when the pointer is on it
+     and closes when the pointer leaves, floating over the page rather than
+     pushing it aside. The toggle pins it open for anyone who would rather it
+     stayed, and that choice is the only thing worth remembering.
+
+     Hover is a pointer idea. On a touch screen a tap reports as a hover and
+     nothing ever reports leaving, so the rail would open on the first tap and
+     never close. There, and on phones where the rail is a top bar, the toggle
+     is the only way it opens. */
+  var pinned = false;
+
+  function hoverCapable() {
+    return window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches;
   }
 
-  function setSidebar(collapsed) {
-    document.body.classList.toggle('side-collapsed', collapsed);
+  function sidebarPinned() {
     try {
-      localStorage.setItem(SIDE_KEY, collapsed ? 'collapsed' : 'open');
+      return localStorage.getItem(SIDE_KEY) === 'open';
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function paintSidebar(open) {
+    document.body.classList.toggle('side-open', Boolean(open));
+    var toggle = $('#side-toggle');
+    if (toggle) toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+
+  function setPinned(next) {
+    pinned = Boolean(next);
+    paintSidebar(pinned);
+    var toggle = $('#side-toggle');
+    if (toggle) toggle.setAttribute('aria-pressed', pinned ? 'true' : 'false');
+    try {
+      localStorage.setItem(SIDE_KEY, pinned ? 'open' : 'collapsed');
     } catch (e) {
       /* a private window simply forgets the preference */
     }
+  }
+
+  function wireSidebarHover(host) {
+    if (!hoverCapable()) return;
+    host.addEventListener('mouseenter', function () {
+      paintSidebar(true);
+    });
+    host.addEventListener('mouseleave', function () {
+      if (!pinned) paintSidebar(false);
+    });
+    /* Keyboard users never generate a hover, so focus inside the rail opens it
+       too, and it closes again when focus leaves. */
+    host.addEventListener('focusin', function () {
+      paintSidebar(true);
+    });
+    host.addEventListener('focusout', function () {
+      if (pinned) return;
+      window.setTimeout(function () {
+        if (!host.contains(document.activeElement)) paintSidebar(false);
+      }, 0);
+    });
   }
 
   function renderNav(me) {
@@ -190,7 +231,14 @@
 
     host.className = 'sidebar';
     document.body.classList.add('has-sidebar');
-    if (sidebarCollapsed()) document.body.classList.add('side-collapsed');
+
+    /* The scrim blurs the page while the rail is over it. Built here rather
+       than in eight copies of the markup, and only once. */
+    if (!document.querySelector('.side-scrim')) {
+      var scrim = document.createElement('div');
+      scrim.className = 'side-scrim';
+      document.body.appendChild(scrim);
+    }
 
     var here = location.pathname.replace(/\/index\.html$/, '/');
     var links = navFor(me)
@@ -218,7 +266,8 @@
       '<a class="brand-lockup" href="' + (me.canSubmit ? '/' : '/review.html') + '" title="Account Transfer Validation">' +
       '<span class="label">Account Transfer Validation</span>' +
       '</a>' +
-      '<button type="button" class="side-toggle" id="side-toggle" aria-label="Expand or collapse the menu">' +
+      '<button type="button" class="side-toggle" id="side-toggle" aria-pressed="false" ' +
+      'aria-expanded="false" title="Keep the menu open" aria-label="Keep the menu open">' +
       icon('chevron') +
       '</button>' +
       '</div>' +
@@ -247,8 +296,11 @@
       '</div>';
 
     $('#side-toggle').addEventListener('click', function () {
-      setSidebar(!document.body.classList.contains('side-collapsed'));
+      setPinned(!pinned);
     });
+
+    setPinned(sidebarPinned());
+    wireSidebarHover(host);
 
     $('#sign-out').addEventListener('click', function () {
       fetchJson('/api/logout', { method: 'POST' })

@@ -189,49 +189,73 @@ pre,
  * same three elements, so the shell is laid out here rather than in markup.
  * -------------------------------------------------------------------------- */
 
-body.has-sidebar {
-  display: grid;
-  grid-template-columns: var(--rail) 1fr;
-  grid-template-rows: 1fr auto;
-  min-height: 100vh;
-}
-
 :root {
-  --rail: 236px;
-}
-
-body.side-collapsed {
   --rail: 68px;
+  --rail-open: 236px;
 }
 
-body.has-sidebar > .sidebar {
-  grid-column: 1;
-  grid-row: 1 / span 2;
-}
-
-body.has-sidebar > .page {
-  grid-column: 2;
-  grid-row: 1;
-}
-
-body.has-sidebar > .footer {
-  grid-column: 2;
-  grid-row: 2;
+/* The page is inset by the collapsed width and stays there. An expanded rail
+   floats over the content behind a blurred scrim rather than pushing it
+   sideways, so opening the menu never reflows what the person was reading. */
+body.has-sidebar {
+  padding-left: var(--rail);
 }
 
 .sidebar {
-  position: sticky;
-  top: 0;
-  align-self: start;
-  height: 100vh;
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: var(--rail);
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 16px 12px;
+  padding: 16px 10px;
   background: var(--surface);
   border-right: 1px solid var(--line);
   overflow: hidden;
-  z-index: 20;
+  z-index: 30;
+  transition: width 0.18s ease, box-shadow 0.18s ease;
+}
+
+body.side-open .sidebar {
+  width: var(--rail-open);
+  padding: 16px 12px;
+  box-shadow: 0 0 0 1px var(--line), 12px 0 32px rgba(0, 0, 0, 0.1);
+}
+
+/* The scrim never takes the pointer. The rail closes the moment the mouse
+   leaves it, and a click meant for the page must not be swallowed by a layer
+   that is already on its way out. */
+.side-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  background: rgba(15, 20, 25, 0.2);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease;
+}
+
+body.side-open .side-scrim {
+  opacity: 1;
+}
+
+:root[data-theme='dark'] .side-scrim {
+  background: rgba(0, 0, 0, 0.42);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .side-scrim {
+    background: rgba(0, 0, 0, 0.42);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar,
+  .side-scrim {
+    transition: none;
+  }
 }
 
 .sidebar.is-empty {
@@ -282,7 +306,7 @@ body.has-sidebar > .footer {
   color: var(--ink);
 }
 
-body:not(.side-collapsed) .side-toggle {
+body.side-open .side-toggle {
   transform: rotate(180deg);
 }
 
@@ -390,30 +414,30 @@ body:not(.side-collapsed) .side-toggle {
 }
 
 /* Collapsed: icons only, and nothing reflows when the labels go. */
-body.side-collapsed .label,
+body:not(.side-open) .label,
 /* Collapsed, the rail is icons only, so the product name goes with the rest
    of the labels and the toggle keeps the row. */
-body.side-collapsed .brand-lockup {
+body:not(.side-open) .brand-lockup {
   display: none;
 }
 
-body.side-collapsed .sidebar {
+body:not(.side-open) .sidebar {
   padding: 16px 10px;
   align-items: stretch;
 }
 
-body.side-collapsed .side-top {
+body:not(.side-open) .side-top {
   padding-bottom: 10px;
 }
 
-body.side-collapsed .side-toggle {
+body:not(.side-open) .side-toggle {
   margin: 0 auto;
 }
 
-body.side-collapsed .side-nav a,
-body.side-collapsed .side-support,
-body.side-collapsed .side-out,
-body.side-collapsed .side-account {
+body:not(.side-open) .side-nav a,
+body:not(.side-open) .side-support,
+body:not(.side-open) .side-out,
+body:not(.side-open) .side-account {
   justify-content: center;
   padding: 10px 0;
 }
@@ -1458,7 +1482,9 @@ details.raw pre {
   left: 50%;
   bottom: 18px;
   transform: translateX(-50%);
-  z-index: 30;
+  /* Under the scrim: it is part of the page, so it dims with the page when the
+     rail is open rather than floating sharply above the blur. */
+  z-index: 20;
   display: flex;
   align-items: center;
   gap: 14px;
@@ -1562,16 +1588,17 @@ details.raw pre {
 /* ------------------------------ the rail, phones ------------------------ */
 
 @media (max-width: 860px) {
+  /* No room for a rail beside the page, so it becomes a bar across the top and
+     the page is inset from nothing. */
   body.has-sidebar {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr auto;
+    padding-left: 0;
   }
 
   body.has-sidebar > .sidebar {
-    grid-column: 1;
-    grid-row: 1;
     position: sticky;
+    inset: auto;
     top: 0;
+    width: auto;
     height: auto;
     flex-direction: row;
     align-items: center;
@@ -1580,16 +1607,20 @@ details.raw pre {
     padding: 10px 14px;
     border-right: 0;
     border-bottom: 1px solid var(--line);
+    box-shadow: none;
+    transition: none;
   }
 
-  body.has-sidebar > .page {
-    grid-column: 1;
-    grid-row: 2;
+  body.side-open .sidebar {
+    width: auto;
+    padding: 10px 14px;
+    box-shadow: none;
   }
 
-  body.has-sidebar > .footer {
-    grid-column: 1;
-    grid-row: 3;
+  /* A bar at the top of the flow is not floating over anything, so nothing
+     behind it needs dimming. */
+  .side-scrim {
+    display: none;
   }
 
   /* Collapsed on a phone means the menu is closed, not narrow. */
@@ -1601,7 +1632,7 @@ details.raw pre {
     margin-bottom: 0;
   }
 
-  body.side-collapsed .brand-lockup {
+  body:not(.side-open) .brand-lockup {
     display: flex;
   }
 
@@ -1638,29 +1669,29 @@ details.raw pre {
     width: auto;
   }
 
-  body.side-collapsed .side-nav,
-  body.side-collapsed .side-foot {
+  body:not(.side-open) .side-nav,
+  body:not(.side-open) .side-foot {
     display: none;
   }
 
-  body.side-collapsed .label,
-  body.side-collapsed .brand-lockup {
+  body:not(.side-open) .label,
+  body:not(.side-open) .brand-lockup {
     display: flex;
   }
 
-  body.side-collapsed .sidebar {
+  body:not(.side-open) .sidebar {
     padding: 10px 14px;
   }
 
-  body.side-collapsed .side-toggle {
+  body:not(.side-open) .side-toggle {
     margin: 0 0 0 auto;
   }
 
-  body:not(.side-collapsed) .side-toggle {
+  body.side-open .side-toggle {
     transform: rotate(90deg);
   }
 
-  body.side-collapsed .side-toggle {
+  body:not(.side-open) .side-toggle {
     transform: rotate(-90deg);
   }
 }
