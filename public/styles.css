@@ -191,12 +191,16 @@ pre,
 
 :root {
   --rail: 68px;
-  /* Wide enough that the product name, the longest string in here, fits on one
-     line beside the toggle. A rail that clips its own title looks broken. */
-  --rail-open: 258px;
+  /* 258px is wide enough that the product name, the longest string in here,
+     fits on one line beside the toggle; a rail that clips its own title looks
+     broken. The min() keeps it off the right edge of a narrow phone without a
+     second set of rules: one rail, every screen. */
+  --rail-open: min(258px, 82vw);
   /* The rail's padding is the same in both states, so one content width serves
-     both and no row ever has to re-measure itself. */
-  --rail-content: calc(var(--rail-open) - 24px);
+     both and no row ever has to re-measure itself. Pinned to the 258px ideal,
+     not to the clamped width, so the rows never re-wrap on a narrow screen
+     either; the rail just clips more of them. */
+  --rail-content: 234px;
 }
 
 /* The page is inset by the collapsed width and stays there. An expanded rail
@@ -226,9 +230,13 @@ body.side-open .sidebar {
   box-shadow: 0 0 0 1px var(--line), 12px 0 32px rgba(0, 0, 0, 0.1);
 }
 
-/* The scrim never takes the pointer. The rail closes the moment the mouse
-   leaves it, and a click meant for the page must not be swallowed by a layer
-   that is already on its way out. */
+/* While the rail is merely being hovered the scrim never takes the pointer:
+   the rail closes the moment the mouse leaves, and a click meant for the page
+   must not be swallowed by a layer already on its way out.
+ 
+   Held open by the toggle it is a different thing. There is no mouse leaving a
+   touch screen, so tapping the page beside the rail has to be the way back,
+   and for that the scrim must be able to receive the tap. */
 .side-scrim {
   position: fixed;
   inset: 0;
@@ -243,6 +251,10 @@ body.side-open .sidebar {
 
 body.side-open .side-scrim {
   opacity: 1;
+}
+
+body.side-open.side-pinned .side-scrim {
+  pointer-events: auto;
 }
 
 :root[data-theme='dark'] .side-scrim {
@@ -1606,129 +1618,6 @@ details.raw pre {
   }
 }
 
-
-/* ------------------------------ the rail, phones ------------------------ */
-
-@media (max-width: 860px) {
-  /* No room for a rail beside the page, so it becomes a bar across the top and
-     the page is inset from nothing. */
-  body.has-sidebar {
-    padding-left: 0;
-  }
-
-  body.has-sidebar > .sidebar {
-    position: sticky;
-    inset: auto;
-    top: 0;
-    width: auto;
-    height: auto;
-    flex-direction: row;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 6px;
-    padding: 10px 14px;
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
-    box-shadow: none;
-    transition: none;
-  }
-
-  body.side-open .sidebar {
-    width: auto;
-    padding: 10px 14px;
-    box-shadow: none;
-  }
-
-  /* A bar at the top of the flow is not floating over anything, so nothing
-     behind it needs dimming. */
-  .side-scrim {
-    display: none;
-  }
-
-  /* Closed on a phone means the menu is put away, not narrowed, so nothing is
-     clipped and the rows size themselves as usual. */
-  .side-top,
-  .side-nav a,
-  .side-support,
-  .side-out,
-  .side-account {
-    width: auto;
-  }
-
-  .label {
-    opacity: 1;
-    transition: none;
-  }
-
-  .side-top {
-    order: 1;
-    padding: 0;
-    flex: 1 1 auto;
-    border-bottom: 0;
-    margin-bottom: 0;
-  }
-
-  /* The toggle is on the right of the bar, where a menu button belongs, and
-     the name reads from the left. */
-  .side-toggle {
-    order: 2;
-    margin-left: auto;
-  }
-
-  .brand-lockup {
-    order: 1;
-  }
-
-  .side-nav {
-    order: 3;
-    flex: 1 1 100%;
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: 4px;
-    border-top: 1px solid var(--line);
-    padding-top: 8px;
-    margin-top: 4px;
-  }
-
-  .side-foot {
-    order: 4;
-    flex: 1 1 100%;
-    flex-direction: row;
-    align-items: center;
-    gap: 6px;
-    margin-top: 0;
-  }
-
-  .side-foot .side-support .label {
-    display: none;
-  }
-
-  .side-out {
-    width: auto;
-    margin-left: auto;
-  }
-
-  .side-support {
-    width: auto;
-  }
-
-  body:not(.side-open) .side-nav,
-  body:not(.side-open) .side-foot {
-    display: none;
-  }
-
-  body:not(.side-open) .sidebar {
-    padding: 10px 14px;
-  }
-
-  body.side-open .side-toggle {
-    transform: rotate(90deg);
-  }
-
-  body:not(.side-open) .side-toggle {
-    transform: rotate(-90deg);
-  }
-}
 
 /* ------------------------------ demo accounts --------------------------- */
 

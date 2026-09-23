@@ -165,8 +165,8 @@
 
      Hover is a pointer idea. On a touch screen a tap reports as a hover and
      nothing ever reports leaving, so the rail would open on the first tap and
-     never close. There, and on phones where the rail is a top bar, the toggle
-     is the only way it opens. */
+     never close. There the toggle opens it and a tap on the page, or Escape,
+     puts it away. The rail itself is the same rail at every size. */
   var pinned = false;
 
   function hoverCapable() {
@@ -189,6 +189,7 @@
 
   function setPinned(next) {
     pinned = Boolean(next);
+    document.body.classList.toggle('side-pinned', pinned);
     paintSidebar(pinned);
     var toggle = $('#side-toggle');
     if (toggle) toggle.setAttribute('aria-pressed', pinned ? 'true' : 'false');
@@ -303,6 +304,21 @@
 
     setPinned(sidebarPinned());
     wireSidebarHover(host);
+
+    /* Tapping the page beside a rail that is being held open puts it away.
+       Without this there is no way back on a touch screen, where nothing ever
+       reports the pointer leaving. */
+    var scrim = document.querySelector('.side-scrim');
+    if (scrim) {
+      scrim.addEventListener('click', function () {
+        if (pinned) setPinned(false);
+      });
+    }
+
+    /* Escape does the same for a keyboard. */
+    document.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape' && pinned) setPinned(false);
+    });
 
     $('#sign-out').addEventListener('click', function () {
       fetchJson('/api/logout', { method: 'POST' })

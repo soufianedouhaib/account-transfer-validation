@@ -105,12 +105,19 @@
       );
     }
 
-    // A shrunken desktop chart is unreadable on a phone, so the geometry is
-    // chosen from the width the chart actually has.
-    var narrow = window.innerWidth < 720;
-    var W = narrow ? 380 : 860;
+    /* The viewBox is the measured width of the box the chart sits in, so one
+       SVG unit is one CSS pixel and nothing is scaled. A fixed viewBox looks
+       fine until the column is narrower than it assumed, and then every label
+       shrinks with the drawing: an 11px tick rendered into a 380 unit box
+       squeezed into 246px comes out at 7px, which is not a label any more.
+       Measuring instead of guessing means this works in any column, at any
+       size, with no breakpoint to keep in step. */
+    var host = $('#chart-host');
+    var available = host ? Math.round(host.clientWidth) : 0;
+    var W = Math.max(280, Math.min(available || 860, 980));
+    var narrow = W < 560;
     var H = narrow ? 300 : 300;
-    var padL = narrow ? 52 : 68;
+    var padL = narrow ? 46 : 68;
     var padR = narrow ? 10 : 16;
     var padT = 18;
     var padB = narrow ? 40 : 44;
@@ -354,15 +361,22 @@
       syncControls();
       load();
 
-      var wide = window.innerWidth >= 720;
+      /* Redraw when the column changes width, so the chart is always drawn at
+         the size it is actually shown at. Debounced, because a drag across the
+         window edge fires this continuously. */
+      var lastWidth = 0;
+      var redrawTimer = null;
       window.addEventListener('resize', function () {
-        var nowWide = window.innerWidth >= 720;
-        if (nowWide === wide) return;
-        wide = nowWide;
-        if (current) {
-          $('#chart-host').innerHTML = chartHtml(current);
+        var host = $('#chart-host');
+        if (!host || !current) return;
+        var width = Math.round(host.clientWidth);
+        if (Math.abs(width - lastWidth) < 8) return;
+        lastWidth = width;
+        if (redrawTimer) clearTimeout(redrawTimer);
+        redrawTimer = setTimeout(function () {
+          host.innerHTML = chartHtml(current);
           wireTooltip();
-        }
+        }, 120);
       });
     },
     { need: 'reviewer' }
