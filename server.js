@@ -10,6 +10,20 @@ const app = express();
 
 app.use(express.json({ limit: '1mb' }));
 app.use(auth.attach);
+
+/* Every API response is personal: whose runs, whose packet, whose decisions.
+   None of it carries cache headers on its own, and a response with none is not
+   uncacheable, it is heuristically cacheable. A browser shared between two
+   people, or a CDN that decides a 200 with no instructions is fair game, can
+   then hand one person's run list to the next one who signs in. Saying
+   no-store once, here, is the only reliable way to mean it, and Vary on the
+   cookie keeps any intermediary from keying a response without the session it
+   was built for. */
+app.use('/api', function (req, res, next) {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.setHeader('Vary', 'Cookie');
+  next();
+});
 /* The pages, the scripts and the stylesheet are revalidated on every request.
    A blanket five minute cache here is how a deployed change appears not to have
    shipped: the browser keeps serving the previous script and the fix looks like
