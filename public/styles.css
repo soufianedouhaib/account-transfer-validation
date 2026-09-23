@@ -586,9 +586,13 @@ button:focus-visible,
   width: auto;
 }
 
+/* The search is the one control that can give up room, so it is the one that
+   flexes. Everything else is sized by its longest option and must not be
+   squeezed into illegibility, and the export is an action that belongs on the
+   same line as the filters it exports. */
 .toolbar input[type='search'] {
-  min-width: 240px;
-  flex: 1 1 240px;
+  min-width: 150px;
+  flex: 1 1 180px;
   max-width: 340px;
 }
 
@@ -600,8 +604,18 @@ button:focus-visible,
   margin-bottom: 14px;
 }
 
+/* An auto left margin claims every pixel of slack before the items after it
+   are placed, which is how the export button ended up alone on a second row.
+   A flexible spacer of its own takes the leftover instead and gives it back
+   when the row runs short. */
 .toolbar .spacer {
-  margin-left: auto;
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.toolbar .pill,
+.toolbar .btn {
+  flex: 0 0 auto;
 }
 
 .btn {
