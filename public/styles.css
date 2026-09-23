@@ -191,7 +191,12 @@ pre,
 
 :root {
   --rail: 68px;
-  --rail-open: 236px;
+  /* Wide enough that the product name, the longest string in here, fits on one
+     line beside the toggle. A rail that clips its own title looks broken. */
+  --rail-open: 258px;
+  /* The rail's padding is the same in both states, so one content width serves
+     both and no row ever has to re-measure itself. */
+  --rail-content: calc(var(--rail-open) - 24px);
 }
 
 /* The page is inset by the collapsed width and stays there. An expanded rail
@@ -208,7 +213,7 @@ body.has-sidebar {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 16px 10px;
+  padding: 16px 12px;
   background: var(--surface);
   border-right: 1px solid var(--line);
   overflow: hidden;
@@ -218,7 +223,6 @@ body.has-sidebar {
 
 body.side-open .sidebar {
   width: var(--rail-open);
-  padding: 16px 12px;
   box-shadow: 0 0 0 1px var(--line), 12px 0 32px rgba(0, 0, 0, 0.1);
 }
 
@@ -277,8 +281,6 @@ body.side-open .side-scrim {
   color: inherit;
 }
 
-/* The rail is narrow and the product name is three words, so it wraps rather
-   than being cut off mid word by an ellipsis. */
 .brand-lockup .label {
   font-weight: 600;
   font-size: 13.5px;
@@ -287,7 +289,6 @@ body.side-open .side-scrim {
 }
 
 .side-toggle {
-  margin-left: auto;
   flex: 0 0 auto;
   width: 30px;
   height: 30px;
@@ -413,33 +414,49 @@ body.side-open .side-toggle {
   color: var(--muted);
 }
 
-/* Collapsed: icons only, and nothing reflows when the labels go. */
-body:not(.side-open) .label,
-/* Collapsed, the rail is icons only, so the product name goes with the rest
-   of the labels and the toggle keeps the row. */
-body:not(.side-open) .brand-lockup {
-  display: none;
+/* Every row inside the rail is laid out at the OPEN width, in both states, and
+   the rail's own overflow clips it while narrow.
+ 
+   The obvious alternative, hiding the labels and letting the rows shrink, makes
+   the text lay itself out inside a 68px box for the length of the animation:
+   "Account Transfer Validation" wraps onto three lines, then snaps back to one
+   as the rail reaches its full width. Nothing here re-wraps or moves, because
+   nothing here changes size. Only the window onto it does, and the labels fade
+   through. */
+.side-top,
+.side-nav a,
+.side-support,
+.side-out,
+.side-account {
+  width: var(--rail-content);
+  flex: none;
 }
 
-body:not(.side-open) .sidebar {
-  padding: 16px 10px;
-  align-items: stretch;
+.label {
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.12s ease;
 }
 
-body:not(.side-open) .side-top {
-  padding-bottom: 10px;
+body.side-open .label {
+  opacity: 1;
+  transition: opacity 0.16s ease 0.06s;
 }
 
-body:not(.side-open) .side-toggle {
-  margin: 0 auto;
+/* Two stacked lines, so the container wraps even though each line does not. */
+.side-account .label {
+  white-space: normal;
 }
 
-body:not(.side-open) .side-nav a,
-body:not(.side-open) .side-support,
-body:not(.side-open) .side-out,
-body:not(.side-open) .side-account {
-  justify-content: center;
-  padding: 10px 0;
+.account-name,
+.account-role {
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .label {
+    transition: none;
+  }
 }
 
 /* -------------------------------- layout -------------------------------- */
@@ -1623,7 +1640,21 @@ details.raw pre {
     display: none;
   }
 
-  /* Collapsed on a phone means the menu is closed, not narrow. */
+  /* Closed on a phone means the menu is put away, not narrowed, so nothing is
+     clipped and the rows size themselves as usual. */
+  .side-top,
+  .side-nav a,
+  .side-support,
+  .side-out,
+  .side-account {
+    width: auto;
+  }
+
+  .label {
+    opacity: 1;
+    transition: none;
+  }
+
   .side-top {
     order: 1;
     padding: 0;
@@ -1632,8 +1663,15 @@ details.raw pre {
     margin-bottom: 0;
   }
 
-  body:not(.side-open) .brand-lockup {
-    display: flex;
+  /* The toggle is on the right of the bar, where a menu button belongs, and
+     the name reads from the left. */
+  .side-toggle {
+    order: 2;
+    margin-left: auto;
+  }
+
+  .brand-lockup {
+    order: 1;
   }
 
   .side-nav {
@@ -1674,17 +1712,8 @@ details.raw pre {
     display: none;
   }
 
-  body:not(.side-open) .label,
-  body:not(.side-open) .brand-lockup {
-    display: flex;
-  }
-
   body:not(.side-open) .sidebar {
     padding: 10px 14px;
-  }
-
-  body:not(.side-open) .side-toggle {
-    margin: 0 0 0 auto;
   }
 
   body.side-open .side-toggle {

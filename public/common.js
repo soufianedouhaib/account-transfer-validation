@@ -262,14 +262,16 @@
 
     host.innerHTML =
       '<div class="side-top">' +
-      /* The product name alone, no logo mark. It is the link home. */
-      '<a class="brand-lockup" href="' + (me.canSubmit ? '/' : '/review.html') + '" title="Account Transfer Validation">' +
-      '<span class="label">Account Transfer Validation</span>' +
-      '</a>' +
+      /* The toggle comes first so it is the one thing still on screen when the
+         rail is a narrow strip; the product name follows it and is clipped
+         away until the rail opens. */
       '<button type="button" class="side-toggle" id="side-toggle" aria-pressed="false" ' +
       'aria-expanded="false" title="Keep the menu open" aria-label="Keep the menu open">' +
       icon('chevron') +
       '</button>' +
+      '<a class="brand-lockup" href="' + (me.canSubmit ? '/' : '/review.html') + '" title="Account Transfer Validation">' +
+      '<span class="label">Account Transfer Validation</span>' +
+      '</a>' +
       '</div>' +
       '<nav class="side-nav">' +
       links +
