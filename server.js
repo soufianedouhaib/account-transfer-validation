@@ -829,6 +829,58 @@ const CSV_COLUMNS = [
   ['reviewNote', 'Decision note']
 ];
 
+/* ------------------------------------------------------------------ *
+ * Clearing the history                                                *
+ * ------------------------------------------------------------------ *
+ *
+ * Keeps the newest few runs and deletes the rest: the record, the kept copy
+ * of its packet, and its place in every index. Nothing is archived and there
+ * is no undo, so the button that calls this asks first.
+ *
+ * Every screen reads the same indexes, so the queue, the exports and the
+ * report all follow from this one operation without being told.
+ */
+const CLEAR_KEEPS = 3;
+
+app.post('/api/history/clear', auth.requireReviewer, async function (req, res) {
+  if (!store.configured) {
+    return res.status(503).json({ error: 'There is no run history to clear.' });
+  }
+  try {
+    const ids = await store.listIds(LIST_KEY, HISTORY_CAP);
+    const records = [];
+    for (let i = 0; i < ids.length; i++) {
+      const rec = await loadRecord(ids[i]);
+      if (rec) records.push(rec);
+      else await store.removeId(LIST_KEY, ids[i]); // an id whose record is gone
+    }
+
+    // Newest first by submission time, so "the last three" means the three
+    // most recently submitted rather than the three most recently touched.
+    records.sort(function (a, b) {
+      return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
+    });
+
+    const keep = records.slice(0, CLEAR_KEEPS);
+    const drop = records.slice(CLEAR_KEEPS);
+
+    for (let i = 0; i < drop.length; i++) {
+      const rec = drop[i];
+      const parts = (rec.packet && Number(rec.packet.parts)) || 0;
+      for (let p = 0; p < parts; p++) await store.del(packetKey(rec.caseId, p));
+      await store.del(RECORD_KEY(rec.caseId));
+      await store.removeId(LIST_KEY, rec.caseId);
+      if (rec.owner && rec.owner.email) {
+        await store.removeId(OWNER_KEY(rec.owner.email), rec.caseId);
+      }
+    }
+
+    res.json({ cleared: drop.length, kept: keep.length, keeps: CLEAR_KEEPS });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
 /** The same rows the queue shows, as a spreadsheet, honouring the same range. */
 app.get('/api/export.csv', auth.requireReviewer, async function (req, res) {
   if (!store.configured) {
