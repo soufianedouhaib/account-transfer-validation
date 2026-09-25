@@ -591,8 +591,8 @@ button:focus-visible,
    squeezed into illegibility, and the export is an action that belongs on the
    same line as the filters it exports. */
 .toolbar input[type='search'] {
-  min-width: 150px;
-  flex: 1 1 180px;
+  min-width: 130px;
+  flex: 1 1 150px;
   max-width: 340px;
 }
 
@@ -616,6 +616,46 @@ button:focus-visible,
 .toolbar .pill,
 .toolbar .btn {
   flex: 0 0 auto;
+}
+
+/* Deleting runs is not undoable, so the button that starts it asks first and
+   the answer is the only red thing on the screen. The question sits on its own
+   row rather than in a browser dialog: a dialog stops the page, and this one
+   needs the list behind it still readable. */
+.confirm-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.confirm-row .spacer {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.btn-danger {
+  background: var(--bad);
+  color: #ffffff;
+  border-color: transparent;
+}
+
+.btn-danger:hover {
+  background: #8f1e17;
+}
+
+/* In dark mode the danger colour is a light red, so the label flips to dark to
+   keep its contrast. Guarded, or this would also catch light mode, where the
+   theme attribute is simply absent. */
+:root[data-theme='dark'] .btn-danger {
+  color: #2a1513;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .btn-danger {
+    color: #2a1513;
+  }
 }
 
 .btn {

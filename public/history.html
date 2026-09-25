@@ -20,7 +20,7 @@
         <div class="toolbar">
           <span id="scope-wrap" hidden>
             <select id="filter-scope" aria-label="Whose runs to show">
-              <option value="">Everyone's runs</option>
+              <option value="">Everyone</option>
               <option value="mine">Only mine</option>
             </select>
           </span>
@@ -51,7 +51,16 @@
           <span class="spacer"></span>
           <span class="pill" id="count-pill">0 runs</span>
           <a class="btn btn-quiet btn-small" id="export-link" href="/api/export.csv" hidden>Export CSV</a>
+          <button type="button" class="btn btn-small" id="clear-runs" hidden>Clear runs</button>
         </div>
+        <div class="notice notice-warn confirm-row" id="clear-confirm" hidden>
+          <span class="glyph">!</span>
+          <span id="clear-question">Delete every run except the three newest? This cannot be undone.</span>
+          <span class="spacer"></span>
+          <button type="button" class="btn btn-small btn-danger" id="clear-yes">Yes, clear them</button>
+          <button type="button" class="btn btn-quiet btn-small" id="clear-no">Cancel</button>
+        </div>
+        <p class="notice" id="clear-note" hidden style="margin-bottom: 14px"></p>
         <div id="history-body"><div class="skeleton">Loading</div></div>
       </section>
     </main>

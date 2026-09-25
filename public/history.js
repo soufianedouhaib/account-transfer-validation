@@ -180,6 +180,65 @@
       '</tbody></table></div>';
   }
 
+  /* Clearing the history keeps the three newest runs and deletes the rest,
+     everywhere: the list, the queue, the exports and the report all read the
+     same index. It cannot be undone, so it asks once, on the page rather than
+     in a browser dialog, and the button itself never goes away or greys out:
+     a control that disappears at three runs is a control people stop looking
+     for. */
+  function clearResult(out) {
+    var note = $('#clear-note');
+    if (!note) return;
+    note.hidden = false;
+    note.textContent = out.cleared
+      ? 'Cleared ' + out.cleared + (out.cleared === 1 ? ' run' : ' runs') +
+        ', keeping the ' + out.kept + ' newest.'
+      : 'Nothing to clear: there were only ' + out.kept +
+        (out.kept === 1 ? ' run' : ' runs') + ' to begin with.';
+  }
+
+  function showConfirm(open) {
+    $('#clear-confirm').hidden = !open;
+    if (open && $('#clear-note')) $('#clear-note').hidden = true;
+  }
+
+  function wireClear() {
+    var button = $('#clear-runs');
+    if (!button) return;
+    button.hidden = false;
+
+    button.addEventListener('click', function () {
+      showConfirm(true);
+    });
+    $('#clear-no').addEventListener('click', function () {
+      showConfirm(false);
+    });
+    $('#clear-yes').addEventListener('click', function () {
+      var yes = $('#clear-yes');
+      yes.disabled = true;
+      yes.textContent = 'Clearing';
+      ATV.fetchJson('/api/history/clear', { method: 'POST' })
+        .then(function (out) {
+          showConfirm(false);
+          clearResult(out);
+          load(canReview ? $('#filter-scope').value : '');
+        })
+        .catch(function (err) {
+          if (ATV.onAuthLoss(err)) return;
+          showConfirm(false);
+          var note = $('#clear-note');
+          if (note) {
+            note.hidden = false;
+            note.textContent = 'Nothing was cleared: ' + err.message;
+          }
+        })
+        .then(function () {
+          yes.disabled = false;
+          yes.textContent = 'Yes, clear them';
+        });
+    });
+  }
+
   function load(scope) {
     var range = currentRange();
     var query = ATV.rangeQuery(range);
@@ -227,6 +286,7 @@
         $('#filter-who').hidden = false;
         $('#filter-who').addEventListener('change', render);
       }
+      wireClear();
       $('#page-title').textContent = 'All runs';
       $('#page-sub').textContent =
         'Every packet submitted through this console, newest first, whoever submitted it.';
