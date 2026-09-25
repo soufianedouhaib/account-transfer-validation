@@ -604,10 +604,45 @@ button:focus-visible,
   margin-bottom: 14px;
 }
 
-/* An auto left margin claims every pixel of slack before the items after it
-   are placed, which is how the export button ended up alone on a second row.
-   A flexible spacer of its own takes the leftover instead and gives it back
-   when the row runs short. */
+/* A split toolbar holds two groups and never breaks between them. */
+.toolbar-split {
+  flex-wrap: nowrap;
+}
+
+/* The filters and the actions are two groups, not one long wrapping row.
+
+   One row that wraps puts whatever does not fit on a second line, and what
+   does not fit is always the last thing, which is the button. Splitting them
+   means the toolbar itself never wraps: the filters wrap among themselves and
+   the actions stay beside them, on the same level, at any width. */
+.toolbar-filters {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.toolbar-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Below this the page is a single column and the actions get their own line,
+   because side by side there is no room left for the filters to be usable. */
+@media (max-width: 720px) {
+  .toolbar-split {
+    flex-wrap: wrap;
+  }
+
+  .toolbar-filters {
+    flex: 1 1 100%;
+  }
+}
+
 .toolbar .spacer {
   flex: 1 1 0;
   min-width: 0;

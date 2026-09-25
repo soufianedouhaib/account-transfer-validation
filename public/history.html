@@ -17,7 +17,8 @@
       </div>
 
       <section class="card">
-        <div class="toolbar">
+        <div class="toolbar toolbar-split">
+          <div class="toolbar-filters">
           <span id="scope-wrap" hidden>
             <select id="filter-scope" aria-label="Whose runs to show">
               <option value="">Everyone</option>
@@ -48,10 +49,12 @@
             <option value="UNFINISHED">Did not finish</option>
           </select>
           <input type="search" id="filter-text" placeholder="Search client or employee" />
-          <span class="spacer"></span>
-          <span class="pill" id="count-pill">0 runs</span>
+          </div>
+          <div class="toolbar-actions">
+            <span class="pill" id="count-pill">0 runs</span>
           <a class="btn btn-quiet btn-small" id="export-link" href="/api/export.csv" hidden>Export CSV</a>
           <button type="button" class="btn btn-small" id="clear-runs" hidden>Clear runs</button>
+          </div>
         </div>
         <div class="notice notice-warn confirm-row" id="clear-confirm" hidden>
           <span class="glyph">!</span>

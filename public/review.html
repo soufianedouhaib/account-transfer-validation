@@ -22,7 +22,8 @@
       <div class="stats" id="queue-stats"></div>
 
       <section class="card" style="margin-top: 16px">
-        <div class="toolbar">
+        <div class="toolbar toolbar-split">
+          <div class="toolbar-filters">
           <select id="filter-preset" aria-label="Period">
             <option value="">All time</option>
             <option value="today">Today</option>
@@ -54,9 +55,11 @@
             <option value="NIGO">Not in good order</option>
           </select>
           <input type="search" id="filter-text" placeholder="Search client or employee" />
-          <span class="spacer"></span>
-          <span class="pill" id="count-pill">0 runs</span>
+          </div>
+          <div class="toolbar-actions">
+            <span class="pill" id="count-pill">0 runs</span>
           <a class="btn btn-quiet btn-small" id="export-link" href="/api/export.csv">Export CSV</a>
+          </div>
         </div>
         <div id="queue-body"><div class="skeleton">Loading the queue</div></div>
       </section>
