@@ -33,7 +33,11 @@
   }
 
   function matches(row) {
-    var who = $('#filter-who').value;
+    /* Read every optional control defensively. These pages are deployed as
+       separate files, and a script that is a version ahead of its markup
+       should narrow nothing rather than take the whole screen down on a null. */
+    var whoBox = $('#filter-who');
+    var who = whoBox ? whoBox.value : '';
     if (who && row.submittedBy !== who) return false;
 
     var outcome = $('#filter-outcome').value;
@@ -219,8 +223,10 @@
       $('#export-link').hidden = false;
       /* An employee's list is their own work only, so a "who" filter there
          would offer a choice of one. */
-      $('#filter-who').hidden = false;
-      $('#filter-who').addEventListener('change', render);
+      if ($('#filter-who')) {
+        $('#filter-who').hidden = false;
+        $('#filter-who').addEventListener('change', render);
+      }
       $('#page-title').textContent = 'All runs';
       $('#page-sub').textContent =
         'Every packet submitted through this console, newest first, whoever submitted it.';

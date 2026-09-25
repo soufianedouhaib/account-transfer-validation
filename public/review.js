@@ -42,7 +42,11 @@
     var state = $('#filter-state').value;
     if (state && stateOf(row) !== state) return false;
 
-    var who = $('#filter-who').value;
+    /* Read every optional control defensively. These pages are deployed as
+       separate files, and a script that is a version ahead of its markup
+       should narrow nothing rather than take the whole screen down on a null. */
+    var whoBox = $('#filter-who');
+    var who = whoBox ? whoBox.value : '';
     if (who && row.submittedBy !== who) return false;
 
     var verdict = $('#filter-verdict').value;
@@ -248,10 +252,12 @@
     function () {
       /* Every account that reaches this page can see everyone's work, so the
          who filter is always on here. */
-      $('#filter-who').hidden = false;
+      if ($('#filter-who')) {
+        $('#filter-who').hidden = false;
+        $('#filter-who').addEventListener('change', render);
+      }
       $('#filter-state').addEventListener('change', render);
       $('#filter-verdict').addEventListener('change', render);
-      $('#filter-who').addEventListener('change', render);
       $('#filter-text').addEventListener('input', render);
       ['#filter-preset', '#filter-month', '#filter-from', '#filter-to'].forEach(function (sel) {
         $(sel).addEventListener('change', function () {
