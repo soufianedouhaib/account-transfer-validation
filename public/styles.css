@@ -1887,25 +1887,26 @@ body.is-waiting .waiting {
 /* Two series, validated for colour vision deficiency against both surfaces.
    Light uses the brand blue itself; dark uses the step that clears the dark
    lightness band, since the brand blue is too light against a dark card. */
-.viz-root {
+/* App wide, not chart scoped: the ribbon figures, the ring, the ranked bars
+   and the month chart all identify the same two series, so they must all read
+   the same two tokens. These used to sit on a wrapper class, which meant any
+   page without that wrapper silently lost every series colour. */
+:root {
   --series-approved: #387bf0;
   --series-rejected: #eb6834;
   --grid: var(--line);
 }
 
-:root:not([data-theme='light']) .viz-root {
-  --series-approved: #3987e5;
-  --series-rejected: #d95926;
-}
-
+/* Guarded by the media query, or this would also repaint light mode, where
+   the theme attribute is simply absent. */
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) .viz-root {
+  :root:not([data-theme='light']) {
     --series-approved: #3987e5;
     --series-rejected: #d95926;
   }
 }
 
-:root[data-theme='dark'] .viz-root {
+:root[data-theme='dark'] {
   --series-approved: #3987e5;
   --series-rejected: #d95926;
 }
@@ -1954,13 +1955,20 @@ body.is-waiting .waiting {
   color: var(--ink-2);
 }
 
-.legend i {
+.legend i,
+.legend .swatch {
   width: 11px;
   height: 11px;
   border-radius: 3px;
   display: inline-block;
   margin-right: 7px;
   vertical-align: -1px;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
 }
 
 .legend .swatch-approved {
@@ -2025,5 +2033,510 @@ body.is-waiting .waiting {
   }
   .kv dd {
     margin-bottom: 10px;
+  }
+}
+
+/* ------------------------------- the report ----------------------------- *
+ * A ribbon of figures that stays put, and chapters that slide in beside it.
+ * The figures never move, so the shape of the period is on screen whichever
+ * chapter is being read.
+ * ------------------------------------------------------------------------ */
+
+.report-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.ribbon {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 32px;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+}
+
+.rb {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.rb-k {
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* Figures are ink, not series colour: the words beside them carry identity.
+   Only the two money figures take a hue, and each is named by its label. */
+.rb-v {
+  font-size: 23px;
+  font-weight: 600;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+
+.rb-ok {
+  color: var(--series-approved);
+}
+
+.rb-bad {
+  color: var(--series-rejected);
+}
+
+.rb-s {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.rb-controls {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.chapters {
+  display: grid;
+  grid-template-columns: 232px minmax(0, 1fr);
+  min-height: 460px;
+}
+
+.chapter-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 16px 12px;
+  border-right: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.chapter {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 11px 12px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  width: 100%;
+}
+
+.chapter:hover {
+  background: var(--surface-2);
+}
+
+.chapter.is-current {
+  background: var(--brand-soft);
+  color: var(--brand-ink);
+}
+
+.chapter-num {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  font-size: 11.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.chapter.is-current .chapter-num {
+  border-color: var(--brand);
+  background: var(--brand);
+  color: var(--on-brand);
+}
+
+.chapter-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.chapter-title {
+  font-size: 13.5px;
+  font-weight: 500;
+}
+
+.chapter-blurb {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.chapter.is-current .chapter-blurb {
+  color: var(--brand-ink);
+  opacity: 0.8;
+}
+
+.chapter-body {
+  padding: 24px;
+  min-width: 0;
+}
+
+.ch-panel {
+  animation: panel-in 0.22s ease both;
+}
+
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ch-panel {
+    animation: none;
+  }
+}
+
+.ch-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
+.ch-eyebrow {
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.ch-title {
+  font-size: 19px;
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+.ch-head .legend {
+  margin-bottom: 0;
+}
+
+/* ------------------------------- headline ------------------------------- */
+
+.headline {
+  display: flex;
+  align-items: center;
+  gap: 40px;
+  flex-wrap: wrap;
+}
+
+.headline-nums {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+
+.big {
+  font-size: 40px;
+  font-weight: 600;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.big-ok {
+  color: var(--series-approved);
+}
+
+.big-bad {
+  color: var(--series-rejected);
+  margin-top: 18px;
+}
+
+.big-sub {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.ring-wrap {
+  flex: 0 0 auto;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.ring {
+  width: 168px;
+  height: 168px;
+}
+
+.ring-track {
+  fill: none;
+  stroke: var(--surface-3);
+  stroke-width: 12;
+}
+
+/* One proportion, so it is a figure and not a chart: the number is written in
+   the middle and the caption underneath says what it is a share of. */
+.ring-arc {
+  fill: none;
+  stroke: var(--series-approved);
+  stroke-width: 12;
+  stroke-linecap: round;
+  transform: rotate(-90deg);
+  transform-origin: 60px 60px;
+  transition: stroke-dasharray 0.4s ease;
+}
+
+.ring-pct {
+  font-size: 24px;
+  font-weight: 600;
+  fill: var(--ink);
+}
+
+.ring-cap {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  fill: var(--muted);
+}
+
+.ring-note {
+  font-size: 12.5px;
+  color: var(--muted);
+  text-align: center;
+  max-width: 240px;
+}
+
+.head-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 26px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+
+.fact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fact-k {
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.fact-v {
+  font-size: 17px;
+  font-weight: 500;
+}
+
+.fact-s {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+/* --------------------------------- ranks -------------------------------- */
+
+.rank {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.rank-row {
+  display: grid;
+  grid-template-columns: 170px minmax(0, 1fr) 130px;
+  grid-template-areas: 'name track value' 'name track runs';
+  align-items: center;
+  gap: 2px 14px;
+}
+
+.rank-name {
+  grid-area: name;
+  font-size: 13.5px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rank-track {
+  grid-area: track;
+  display: flex;
+  /* The 2px surface gap the mark specs ask for between adjacent fills. */
+  gap: 2px;
+  height: 22px;
+  align-items: stretch;
+}
+
+.rank-bar {
+  border-radius: 0 4px 4px 0;
+  min-width: 0;
+}
+
+.rank-approved {
+  background: var(--series-approved);
+}
+
+.rank-rejected {
+  background: var(--series-rejected);
+}
+
+.rank-value {
+  grid-area: value;
+  text-align: right;
+  font-size: 13.5px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.rank-runs {
+  grid-area: runs;
+  text-align: right;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* ------------------------------ still waiting --------------------------- */
+
+.waiting-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.waiting-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: inherit;
+  text-decoration: none;
+}
+
+.waiting-row:hover {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+}
+
+.waiting-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.waiting-main b {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.waiting-sub {
+  font-size: 12.5px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.waiting-value {
+  font-size: 13.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.waiting-age {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-size: 12.5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.waiting-when {
+  font-size: 11.5px;
+}
+
+.chart-data {
+  margin-top: 18px;
+}
+
+.chart-data summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--brand-ink);
+}
+
+/* The report on a narrow screen: the chapters become a scrolling row of tabs
+   above the panel rather than a column beside it. */
+@media (max-width: 860px) {
+  .chapters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .chapter-list {
+    flex-direction: row;
+    overflow-x: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    padding: 12px;
+  }
+
+  .chapter {
+    width: auto;
+    flex: 0 0 auto;
+  }
+
+  .chapter-blurb {
+    display: none;
+  }
+
+  .chapter-body {
+    padding: 18px 16px;
+  }
+
+  .head-facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .rank-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: 'name value' 'track track' 'runs runs';
+    gap: 4px 12px;
+  }
+
+  .rank-runs {
+    text-align: left;
+  }
+
+  .waiting-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px 12px;
   }
 }
