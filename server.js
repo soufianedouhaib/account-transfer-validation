@@ -898,13 +898,19 @@ function groupBy(rows, amountOf, pick) {
     });
 }
 
-app.get('/api/report', auth.requireAdmin, async function (req, res) {
+/* Everyone gets a report; what differs is whose runs are in it. An employee
+   sees their own work only, which is the same rule their run list follows, so
+   the two screens can never disagree about what they did. The administrator
+   sees all of it, and can narrow to their own with ?scope=mine. The scope is
+   taken from the session, never from a query parameter naming someone else. */
+app.get('/api/report', auth.requireUser, async function (req, res) {
   if (!store.configured) {
     return res.json({ configured: false, months: [], currencies: [], note: 'Reporting needs run history.' });
   }
   try {
     const range = rangeFromQuery(req.query);
-    const ids = await store.listIds(LIST_KEY, HISTORY_CAP);
+    const everything = auth.isAdmin(req.user) && req.query.scope !== 'mine';
+    const ids = await store.listIds(everything ? LIST_KEY : OWNER_KEY(req.user.email), HISTORY_CAP);
     const rows = (await rowsFor(ids)).filter(function (row) {
       return withinRange(row, range.from, range.to);
     });
@@ -1056,6 +1062,7 @@ app.get('/api/report', auth.requireAdmin, async function (req, res) {
     res.json({
       configured: true,
       range: range,
+      scope: everything ? 'all' : 'mine',
       currency: currency,
       currencies: currencyList,
       converted: converted,
