@@ -59,32 +59,38 @@
      Two are built to come back in good order and two to come back not in good
      order, each for a different reason, and the badge says which so a demo
      can pick the ending it wants to show. The workflow still decides: the
-     badge is a label on the packet, not a hint passed to it. */
+     badge is a label on the packet, not a hint passed to it.
+
+     All four name Sterling Financial Partners and carry its firm identifier,
+     NANA 9921. The contra firm fit check holds each delivering firm to its
+     own code, and that is the one pair the workflow has confirmed, so a
+     sample naming any other firm fails on the identifier before it gets to
+     anything the sample is meant to demonstrate. */
   var SAMPLES = [
     {
-      file: '/samples/packet-clean-usd.pdf',
-      name: 'Ellison-Vandermeer, Harbor Trust',
+      file: '/samples/packet-clean-ira.pdf',
+      name: 'Karim, Traditional IRA',
       note: 'Signed, Medallion affixed, statement agrees',
+      amount: '$95,000.00',
+      expect: 'IGO'
+    },
+    {
+      file: '/samples/packet-clean-large.pdf',
+      name: 'Ellison-Vandermeer, Individual',
+      note: 'Clean full liquidation on a larger account',
       amount: '$1,284,500.00',
       expect: 'IGO'
     },
     {
-      file: '/samples/packet-clean-aed.pdf',
-      name: 'Al Mheiri, Gulf Cooperative',
-      note: 'Clean full liquidation in a second currency',
-      amount: 'AED 4,120,000.00',
-      expect: 'IGO'
-    },
-    {
       file: '/samples/packet-ira-incomplete.pdf',
-      name: 'Karim, Sterling Financial',
+      name: 'Herrera, Roth IRA',
       note: 'Unsigned, no election ticked, no Medallion',
-      amount: '$95,000.00',
+      amount: '$58,400.00',
       expect: 'NIGO'
     },
     {
       file: '/samples/packet-mismatch.pdf',
-      name: 'Ferreira, Northbridge Trust',
+      name: 'Ferreira, Roth IRA',
       note: 'Signed, but the firm statement disagrees',
       amount: '$412,750.00',
       expect: 'NIGO'
@@ -119,7 +125,19 @@
         button.disabled = true;
         fetch(sample.file)
           .then(function (res) {
-            if (!res.ok) throw new Error('The sample packet could not be loaded.');
+            /* Name the file and the status. A sample list and a samples
+               folder from two different builds is the one way this fails in
+               practice, and "could not be loaded" sends somebody hunting for
+               a bug that is really a missing file. */
+            if (res.status === 404) {
+              throw new Error(
+                sample.file + ' is not on the server. The sample list and the samples folder are ' +
+                  'from different builds: upload public/app.js and public/samples together.'
+              );
+            }
+            if (!res.ok) {
+              throw new Error('The sample packet could not be loaded: ' + sample.file + ' answered ' + res.status + '.');
+            }
             return res.blob();
           })
           .then(function (blob) {
