@@ -61,41 +61,39 @@
      can pick the ending it wants to show. The workflow still decides: the
      badge is a label on the packet, not a hint passed to it.
 
-     All four name Sterling Financial Partners and carry its firm identifier,
-     NANA 9921. The contra firm fit check holds each delivering firm to its
-     own code, and that is the one pair the workflow has confirmed, so a
-     sample naming any other firm fails on the identifier before it gets to
-     anything the sample is meant to demonstrate. */
-  var SAMPLES = [
-    {
-      file: '/samples/packet-clean-ira.pdf',
-      name: 'Karim, Traditional IRA',
-      note: 'Signed, Medallion affixed, statement agrees',
-      amount: '$95,000.00',
-      expect: 'IGO'
-    },
-    {
-      file: '/samples/packet-clean-large.pdf',
-      name: 'Ellison-Vandermeer, Individual',
-      note: 'Clean full liquidation on a larger account',
-      amount: '$1,284,500.00',
-      expect: 'IGO'
-    },
-    {
-      file: '/samples/packet-ira-incomplete.pdf',
-      name: 'Herrera, Roth IRA',
-      note: 'Unsigned, no election ticked, no Medallion',
-      amount: '$58,400.00',
-      expect: 'NIGO'
-    },
-    {
-      file: '/samples/packet-mismatch.pdf',
-      name: 'Ferreira, Roth IRA',
-      note: 'Signed, but the firm statement disagrees',
-      amount: '$412,750.00',
-      expect: 'NIGO'
-    }
-  ];
+     Every one of them is Yusuf Karim at Sterling Financial Partners, with
+     that firm's identifier, NANA 9921. Two reference sources the packet
+     cannot see decide this: the contra firm fit check holds each firm to its
+     own code, and the consistency check holds every client against the
+     firm's account master. Karim and Sterling are the pair the workflow has
+     confirmed it knows, so a sample naming anyone else fails on being
+     unknown before it reaches whatever it was meant to demonstrate. The two
+     clean packets therefore differ only in the transfer election, which is
+     the one field of substance the master does not hold. */
+  var SAMPLES = [];
+
+  /* The list is fetched from the samples folder rather than written here, so
+     the rows and the files can never be from two different builds. Adding a
+     packet is dropping a PDF in that folder and adding a line to its
+     samples.json; this file does not change. */
+  function loadSamples() {
+    fetch('/samples/samples.json', { cache: 'no-cache' })
+      .then(function (res) {
+        if (!res.ok) throw new Error('status ' + res.status);
+        return res.json();
+      })
+      .then(function (manifest) {
+        SAMPLES = (manifest && manifest.samples) || [];
+        renderSamples();
+      })
+      .catch(function () {
+        /* No manifest means an old samples folder. Say so rather than
+           showing an empty space where the samples used to be. */
+        $('#samples-lead').textContent =
+          'The sample packets are unavailable: public/samples is missing its samples.json.';
+        $('#samples').innerHTML = '';
+      });
+  }
 
   function renderSamples() {
     $('#samples').innerHTML = SAMPLES.map(function (sample, i) {
@@ -388,7 +386,7 @@
         .catch(function () {});
     }
 
-    renderSamples();
+    loadSamples();
     $('#file-clear').addEventListener('click', clearFile);
     $('#submit-form').addEventListener('submit', submit);
 
