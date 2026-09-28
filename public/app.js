@@ -54,25 +54,40 @@
   }
 
   /* Sample packets live with the app so anyone can try it end to end. Each
-     one is fetched and handed to the form exactly as a chosen file would be. */
+     one is fetched and handed to the form exactly as a chosen file would be.
+
+     Two are built to come back in good order and two to come back not in good
+     order, each for a different reason, and the badge says which so a demo
+     can pick the ending it wants to show. The workflow still decides: the
+     badge is a label on the packet, not a hint passed to it. */
   var SAMPLES = [
     {
-      file: '/samples/packet-ira.pdf',
-      name: 'Karim, Sterling Financial',
-      note: 'Traditional IRA, unsigned and missing an election',
-      amount: '$95,000.00'
-    },
-    {
-      file: '/samples/packet-joint.pdf',
+      file: '/samples/packet-clean-usd.pdf',
       name: 'Ellison-Vandermeer, Harbor Trust',
-      note: 'Joint account, signed, Medallion affixed',
-      amount: '$1,284,500.00'
+      note: 'Signed, Medallion affixed, statement agrees',
+      amount: '$1,284,500.00',
+      expect: 'IGO'
     },
     {
-      file: '/samples/packet-international.pdf',
+      file: '/samples/packet-clean-aed.pdf',
       name: 'Al Mheiri, Gulf Cooperative',
-      note: 'Individual account in a second currency',
-      amount: 'AED 4,120,000.00'
+      note: 'Clean full liquidation in a second currency',
+      amount: 'AED 4,120,000.00',
+      expect: 'IGO'
+    },
+    {
+      file: '/samples/packet-ira-incomplete.pdf',
+      name: 'Karim, Sterling Financial',
+      note: 'Unsigned, no election ticked, no Medallion',
+      amount: '$95,000.00',
+      expect: 'NIGO'
+    },
+    {
+      file: '/samples/packet-mismatch.pdf',
+      name: 'Ferreira, Northbridge Trust',
+      note: 'Signed, but the firm statement disagrees',
+      amount: '$412,750.00',
+      expect: 'NIGO'
     }
   ];
 
@@ -81,7 +96,13 @@
       return (
         '<button type="button" class="sample" data-i="' +
         i +
-        '"><span class="pill">Sample</span><span class="what"><b>' +
+        '"><span class="pill ' +
+        (sample.expect === 'IGO' ? 'pill-ok' : 'pill-bad') +
+        '"><span class="glyph">' +
+        (sample.expect === 'IGO' ? '✓' : '!') +
+        '</span>' +
+        (sample.expect === 'IGO' ? 'In good order' : 'Not in good order') +
+        '</span><span class="what"><b>' +
         esc(sample.name) +
         '</b><span>' +
         esc(sample.note) +

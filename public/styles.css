@@ -1788,6 +1788,14 @@ details.raw pre {
   background: var(--brand-soft);
 }
 
+/* The verdict badge is the first column of every sample row, so it is sized
+   for the longer of the two labels and the names line up down the list. */
+.sample > .pill {
+  flex: 0 0 auto;
+  min-width: 142px;
+  justify-content: center;
+}
+
 .sample .what {
   display: flex;
   flex-direction: column;
