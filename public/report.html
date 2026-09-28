@@ -20,6 +20,7 @@
         <!-- The figures stay put whichever chapter is open, so the period's
              shape is always on screen while you read the detail. -->
         <div class="ribbon" id="ribbon">
+          <div class="rb-figures">
           <div class="rb">
             <span class="rb-k">Approved</span>
             <span class="rb-v rb-ok" id="k-approved">—</span>
@@ -46,12 +47,14 @@
             <span class="rb-s" id="k-speed-sub">—</span>
           </div>
 
+          </div>
+
           <div class="rb-controls">
             <select id="filter-preset" aria-label="Period">
-              <option value="last-90">Last 90 days</option>
+              <option value="this-month" selected>This month</option>
               <option value="today">Today</option>
-              <option value="this-month">This month</option>
               <option value="last-month">Last month</option>
+              <option value="last-90">Last 90 days</option>
               <option value="month">A specific month</option>
               <option value="custom">Custom dates</option>
               <option value="">All time</option>

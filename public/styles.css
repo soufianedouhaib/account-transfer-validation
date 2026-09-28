@@ -2047,14 +2047,27 @@ body.is-waiting .waiting {
   overflow: hidden;
 }
 
+/* Two groups, not one wrapping row. A single row puts whatever does not fit
+   on a second line, and what does not fit is always the controls, which then
+   stack under the figures. The figures wrap among themselves; the controls
+   stay beside them, on the same level, at any width. */
 .ribbon {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: flex-end;
+  gap: 16px;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+}
+
+.rb-figures {
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
   gap: 10px 32px;
-  padding: 20px 24px;
-  border-bottom: 1px solid var(--line);
-  background: var(--surface-2);
 }
 
 .rb {
@@ -2095,11 +2108,10 @@ body.is-waiting .waiting {
 }
 
 .rb-controls {
-  margin-left: auto;
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 10px;
-  flex-wrap: wrap;
 }
 
 .chapters {
@@ -2496,6 +2508,18 @@ body.is-waiting .waiting {
 /* The report on a narrow screen: the chapters become a scrolling row of tabs
    above the panel rather than a column beside it. */
 @media (max-width: 860px) {
+  .ribbon {
+    flex-wrap: wrap;
+  }
+
+  .rb-figures {
+    flex: 1 1 100%;
+  }
+
+  .rb-controls {
+    flex-wrap: wrap;
+  }
+
   .chapters {
     grid-template-columns: minmax(0, 1fr);
   }
