@@ -1,0 +1,33 @@
+{
+  "note": "The sample list lives here, beside the files it names, so the two cannot drift apart. Add or change a packet by editing this file and dropping the PDF in the same folder: nothing in public/app.js needs touching.",
+  "samples": [
+    {
+      "file": "/samples/packet-clean-ira.pdf",
+      "name": "Karim, transfer in kind",
+      "note": "Signed, Medallion affixed, statement agrees",
+      "amount": "$95,000.00",
+      "expect": "IGO"
+    },
+    {
+      "file": "/samples/packet-clean-liquidate.pdf",
+      "name": "Karim, liquidate and send cash",
+      "note": "The same account, sold down instead of moved",
+      "amount": "$95,000.00",
+      "expect": "IGO"
+    },
+    {
+      "file": "/samples/packet-ira-incomplete.pdf",
+      "name": "Karim, unsigned packet",
+      "note": "Unsigned, no election ticked, no Medallion",
+      "amount": "$95,000.00",
+      "expect": "NIGO"
+    },
+    {
+      "file": "/samples/packet-mismatch.pdf",
+      "name": "Karim, statement disagrees",
+      "note": "Signed and complete, but the two pages differ",
+      "amount": "$95,000.00",
+      "expect": "NIGO"
+    }
+  ]
+}
