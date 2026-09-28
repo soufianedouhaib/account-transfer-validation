@@ -5,6 +5,7 @@ const express = require('express');
 const opus = require('./lib/opus');
 const store = require('./lib/store');
 const auth = require('./lib/auth');
+const fx = require('./lib/fx');
 
 const app = express();
 
@@ -67,6 +68,16 @@ function parseMoney(printed) {
   return { amount: amount, currency: symbol ? String(symbol).trim() : null };
 }
 
+/* The two sides of every figure on the report. The workflow says IGO or
+   NIGO and nobody overrides it, so a finished run is on one side or the
+   other and a run that never finished is on neither. */
+function verdictSide(row) {
+  if (!row || row.status !== 'COMPLETED') return null;
+  if (row.verdict === 'IGO' || row.isIgo === true) return 'cleared';
+  if (row.verdict === 'NIGO' || row.isIgo === false) return 'blocked';
+  return null;
+}
+
 /**
  * The stored record for one case. Both the printed money string and its parts
  * are kept: pulling "$95,000.00" apart in the browser is guesswork the moment a
@@ -78,7 +89,6 @@ function toRow(rec) {
   const form = (result.extracted && result.extracted.form) || {};
   const audit = result.audit || {};
   const money = parseMoney(form.value);
-  const review = rec.review || null;
   return {
     caseId: rec.caseId,
     title: rec.title || null,
@@ -110,11 +120,6 @@ function toRow(rec) {
     // its own proves nothing about what a reviewer can open.
     hasDocument: Boolean(rec.fileUrl) || Boolean(rec.packet && rec.packet.parts),
     packetKept: Boolean(rec.packet && rec.packet.parts),
-    reviewState: review ? review.decision : 'pending',
-    reviewNote: review ? review.note || null : null,
-    reviewedBy: review ? review.by || null : null,
-    reviewedByName: review ? review.byName || review.by || null : null,
-    reviewedAt: review ? review.at || null : null
   };
 }
 
@@ -171,10 +176,10 @@ async function saveRecord(rec) {
   }
 }
 
-/** Advisors see their own work. Reviewers and the admin see all of it. */
+/** An employee sees their own work. The administrator sees all of it. */
 function maySee(user, rec) {
   if (!user || !rec) return false;
-  if (auth.canReview(user)) return true;
+  if (auth.isAdmin(user)) return true;
   return Boolean(rec.owner && rec.owner.email === user.email);
 }
 
@@ -207,16 +212,16 @@ app.post('/api/login', function (req, res) {
     return res.status(401).json({ error: 'That email and password do not match an account.' });
   }
   /* Either door takes any account. The two pages exist for their wording, not
-     as a gate: an account that lands on the other one is signed in and sent to
-     the home its role actually has, which is far less annoying than being
-     bounced back with an error while holding correct credentials. */
+     as a gate: an account that lands on the other one is signed in and taken
+     to the same home, which is far less annoying than being bounced back with
+     an error while holding correct credentials. */
   auth.setCookie(req, res, auth.issue(user));
   res.json({
     signedIn: true,
     email: user.email,
     role: user.role,
     name: user.name,
-    home: auth.canReview(user) ? '/review.html' : '/'
+    home: '/'
   });
 });
 
@@ -233,14 +238,17 @@ app.get('/api/me', function (req, res) {
     role: user ? user.role : null,
     roleLabel: user ? auth.ROLE_LABEL[user.role] || user.role : null,
     name: user ? user.name : null,
-    canReview: auth.canReview(user),
-    canSubmit: Boolean(user) && (user.role === 'advisor' || user.role === 'admin'),
+    isAdmin: auth.isAdmin(user),
+    /* Nobody approves anything: the workflow's own verdict is the outcome.
+       An administrator sees every run and the report. */
+    canSeeAll: auth.isAdmin(user),
+    canSubmit: Boolean(user),
     appName: 'Account Transfer Validation',
     historyEnabled: store.configured,
     configured: opus.missingEnv().length === 0,
     demoAccounts: {
       advisor: auth.demoAccountsFor('advisor'),
-      reviewer: auth.demoAccountsFor('reviewer')
+      admin: auth.demoAccountsFor('admin')
     },
     support: support()
   });
@@ -281,7 +289,7 @@ app.get('/api/health', async function (req, res) {
       /* Named so a deployed build can be told apart from an older one without
          signing in. A missing name here is the first thing to check when a
          screen is not showing what it should. */
-      features: ['packet-copy', 'run-time', 'run-time-retry']
+      features: ['packet-copy', 'run-time', 'run-time-retry', 'aed-total']
     },
     history: {
       configured: store.configured,
@@ -296,13 +304,9 @@ app.get('/api/health', async function (req, res) {
  * Submitting                                                          *
  * ------------------------------------------------------------------ */
 
-function requireSubmitter(req, res, next) {
-  if (!req.user) return res.status(401).json({ error: 'Sign in to continue.' });
-  if (req.user.role === 'reviewer') {
-    return res.status(403).json({ error: 'Manager accounts do not submit packets.' });
-  }
-  next();
-}
+/* Every account submits now that there is no role whose job was to wait for
+   somebody else's packet. */
+const requireSubmitter = auth.requireUser;
 
 /** Step 1. A presigned slot. The browser uploads straight to storage. */
 app.post('/api/upload-url', requireSubmitter, async function (req, res) {
@@ -384,8 +388,7 @@ app.post('/api/submit', requireSubmitter, async function (req, res) {
       result: null,
       explanation: null,
       workflowError: '',
-      failure: null,
-      review: null
+      failure: null
     };
     await saveRecord(rec);
     res.json({ caseId: caseId, row: toRow(rec) });
@@ -459,8 +462,6 @@ function casePayload(rec, user) {
     explanation: rec.explanation || null,
     workflowError: rec.workflowError || '',
     failure: rec.failure || null,
-    review: rec.review || null,
-    canReview: auth.canReview(user),
     isOwner: Boolean(rec.owner && user && rec.owner.email === user.email),
     stored: store.configured
   };
@@ -492,8 +493,7 @@ app.get('/api/status/:caseId', auth.requireUser, async function (req, res) {
         result: null,
         explanation: null,
         workflowError: '',
-        failure: null,
-        review: null
+        failure: null
       };
     }
     rec.status = status;
@@ -585,7 +585,6 @@ app.put(
       if (!rec || !rec.owner || rec.owner.email !== req.user.email) {
         return res.status(404).json({ error: 'No such case.' });
       }
-      if (rec.review) return res.status(409).json({ error: 'This case has already been decided.' });
 
       await store.setText(packetKey(caseId, part), req.body.toString('base64'), PACKET_TTL_SECONDS);
 
@@ -710,13 +709,13 @@ async function rowsFor(ids) {
   return rows;
 }
 
-/** An advisor's own runs. A reviewer or admin sees everything. */
+/** An employee's own runs. The administrator sees everything. */
 app.get('/api/history', auth.requireUser, async function (req, res) {
   if (!store.configured) {
     return res.json({ configured: false, rows: [], scope: 'none', note: 'History is not configured.' });
   }
   const limit = Math.min(Number(req.query.limit) || 50, HISTORY_CAP);
-  const everything = auth.canReview(req.user) && req.query.scope !== 'mine';
+  const everything = auth.isAdmin(req.user) && req.query.scope !== 'mine';
   try {
     const ids = await store.listIds(everything ? LIST_KEY : OWNER_KEY(req.user.email), limit);
     const range = rangeFromQuery(req.query);
@@ -734,68 +733,8 @@ app.get('/api/history', auth.requireUser, async function (req, res) {
   }
 });
 
-/** The reviewer queue: every finished run, newest first. */
-app.get('/api/queue', auth.requireReviewer, async function (req, res) {
-  if (!store.configured) {
-    return res.json({
-      configured: false,
-      rows: [],
-      note: 'The queue needs run history. Connect a storage database and redeploy.'
-    });
-  }
-  try {
-    const ids = await store.listIds(LIST_KEY, HISTORY_CAP);
-    const range = rangeFromQuery(req.query);
-    const rows = (await rowsFor(ids)).filter(function (row) {
-      return (row.status === 'COMPLETED' || row.failure) && withinRange(row, range.from, range.to);
-    });
-    res.json({ configured: true, range: range, rows: rows });
-  } catch (err) {
-    res.json({ configured: true, rows: [], note: 'The queue is unavailable: ' + err.message });
-  }
-});
-
-/** Approve, reject or send back. A note is required on anything but approval. */
-app.post('/api/case/:caseId/review', auth.requireReviewer, async function (req, res) {
-  const caseId = String(req.params.caseId);
-  const body = req.body || {};
-  const decision = String(body.decision || '').toLowerCase();
-  const note = String(body.note || '').trim();
-
-  if (['approved', 'rejected', 'returned'].indexOf(decision) === -1) {
-    return res.status(400).json({ error: 'The decision must be approved, rejected or returned.' });
-  }
-  if (decision !== 'approved' && note.length < 3) {
-    return res.status(400).json({ error: 'A note is required when rejecting or sending a packet back.' });
-  }
-  if (!store.configured) {
-    return res.status(503).json({
-      error: 'Decisions cannot be saved because run history is not configured.'
-    });
-  }
-
-  try {
-    const rec = await loadRecord(caseId);
-    if (!rec) return res.status(404).json({ error: 'No such case.' });
-    if (!rec.result && !rec.failure) {
-      return res.status(409).json({ error: 'This run has not finished yet.' });
-    }
-    rec.review = {
-      decision: decision,
-      note: note || null,
-      by: req.user.email,
-      byName: req.user.name,
-      at: new Date().toISOString()
-    };
-    await saveRecord(rec);
-    res.json({ review: rec.review, row: toRow(rec) });
-  } catch (err) {
-    sendError(res, err);
-  }
-});
-
 /* ------------------------------------------------------------------ *
- * Reporting and export, managers and the admin                        *
+ * Reporting and export, for the administrator                         *
  * ------------------------------------------------------------------ */
 
 function csvCell(value) {
@@ -822,11 +761,7 @@ const CSV_COLUMNS = [
   ['runtimeSeconds', 'Workflow run time (s)'],
   ['verdict', 'Workflow verdict'],
   ['totalIssues', 'Issues'],
-  ['lowConfidence', 'Low confidence reads'],
-  ['reviewState', 'Review decision'],
-  ['reviewedByName', 'Decided by'],
-  ['reviewedAt', 'Decided at'],
-  ['reviewNote', 'Decision note']
+  ['lowConfidence', 'Low confidence reads']
 ];
 
 /* ------------------------------------------------------------------ *
@@ -837,12 +772,12 @@ const CSV_COLUMNS = [
  * of its packet, and its place in every index. Nothing is archived and there
  * is no undo, so the button that calls this asks first.
  *
- * Every screen reads the same indexes, so the queue, the exports and the
+ * Every screen reads the same indexes, so the run lists, the exports and the
  * report all follow from this one operation without being told.
  */
 const CLEAR_KEEPS = 3;
 
-app.post('/api/history/clear', auth.requireReviewer, async function (req, res) {
+app.post('/api/history/clear', auth.requireAdmin, async function (req, res) {
   if (!store.configured) {
     return res.status(503).json({ error: 'There is no run history to clear.' });
   }
@@ -882,7 +817,7 @@ app.post('/api/history/clear', auth.requireReviewer, async function (req, res) {
 });
 
 /** The same rows the queue shows, as a spreadsheet, honouring the same range. */
-app.get('/api/export.csv', auth.requireReviewer, async function (req, res) {
+app.get('/api/export.csv', auth.requireAdmin, async function (req, res) {
   if (!store.configured) {
     return res.status(503).json({ error: 'Export needs run history. Connect a storage database and redeploy.' });
   }
@@ -917,54 +852,45 @@ app.get('/api/export.csv', auth.requireReviewer, async function (req, res) {
 });
 
 /**
- * Monthly totals for the report: how much was approved against how much was
- * rejected. Amounts are grouped by the currency they were printed in, because
- * adding dirhams to dollars would be a lie.
- */
-/**
  * Rolls the rows up by whatever the picker names: the person who submitted
  * them, the delivering firm, anything with a key and a label.
  *
- * Only decided runs carry an amount here. A run still waiting has a value but
- * no verdict, and putting it in a bar beside approved and rejected money would
- * be inventing an outcome for it, so it is counted apart and reported as such.
+ * The workflow decides the outcome, so the two sides are its own verdict:
+ * value it cleared as in good order against value it blocked as not in good
+ * order. A run that never finished produced no verdict, so it is counted
+ * apart rather than being given one.
  *
- * Amounts stay inside the chosen currency. A row printed in dirhams is counted
- * in its count but not added to a dollar total.
+ * `amountOf` decides what a row is worth: either its printed amount when the
+ * report is pinned to one currency, or its value converted to dirhams. It
+ * returns null for a row that cannot be counted, which is counted in the runs
+ * but not in the money.
  */
-function groupBy(rows, currency, pick) {
+function groupBy(rows, amountOf, pick) {
   const buckets = {};
   rows.forEach(function (row) {
     const picked = pick(row) || {};
     const key = picked.key;
     if (!key) return;
     if (!buckets[key]) {
-      buckets[key] = {
-        key: key,
-        label: picked.label || key,
-        approved: 0,
-        rejected: 0,
-        runs: 0,
-        undecided: 0
-      };
+      buckets[key] = { key: key, label: picked.label || key, cleared: 0, blocked: 0, runs: 0, unfinished: 0 };
     }
     const bucket = buckets[key];
     bucket.runs += 1;
 
-    const decided = row.status === 'COMPLETED' && (row.reviewState === 'approved' || row.reviewState === 'rejected');
-    if (!decided) {
-      bucket.undecided += 1;
+    const side = verdictSide(row);
+    if (!side) {
+      bucket.unfinished += 1;
       return;
     }
-    const sameCurrency = !currency || (row.valueCurrency || 'unlabelled') === currency;
-    if (typeof row.valueAmount !== 'number' || !sameCurrency) return;
-    bucket[row.reviewState] += row.valueAmount;
+    const amount = amountOf(row);
+    if (typeof amount !== 'number') return;
+    bucket[side] += amount;
   });
 
   return Object.keys(buckets)
     .map(function (k) {
       const b = buckets[k];
-      b.total = b.approved + b.rejected;
+      b.total = b.cleared + b.blocked;
       return b;
     })
     .sort(function (a, b) {
@@ -972,34 +898,7 @@ function groupBy(rows, currency, pick) {
     });
 }
 
-/** Finished runs with nobody's decision on them yet, oldest first. */
-function waitingFrom(rows) {
-  const now = Date.now();
-  return rows
-    .filter(function (row) {
-      return row.status === 'COMPLETED' && (row.reviewState || 'pending') === 'pending';
-    })
-    .map(function (row) {
-      const at = row.createdAt ? Date.parse(row.createdAt) : NaN;
-      return {
-        caseId: row.caseId,
-        title: row.title,
-        clientName: row.clientName,
-        contraFirm: row.contraFirm,
-        submittedByName: row.submittedByName || row.submittedBy,
-        submittedValue: row.submittedValue,
-        verdict: row.verdict,
-        totalIssues: row.totalIssues,
-        createdAt: row.createdAt,
-        waitingDays: isNaN(at) ? null : Math.max(0, Math.floor((now - at) / 86400000))
-      };
-    })
-    .sort(function (a, b) {
-      return String(a.createdAt || '').localeCompare(String(b.createdAt || ''));
-    });
-}
-
-app.get('/api/report', auth.requireReviewer, async function (req, res) {
+app.get('/api/report', auth.requireAdmin, async function (req, res) {
   if (!store.configured) {
     return res.json({ configured: false, months: [], currencies: [], note: 'Reporting needs run history.' });
   }
@@ -1020,15 +919,48 @@ app.get('/api/report', auth.requireReviewer, async function (req, res) {
     const currencyList = Object.keys(currencies).sort(function (a, b) {
       return currencies[b] - currencies[a];
     });
-    const currency = String(req.query.currency || currencyList[0] || '');
 
+    /* Default view: every currency converted to dirhams and added up, which
+       is the number a manager is actually after. Passing ?currency=USD pins
+       the report to one currency instead and leaves the printed amounts
+       alone. */
+    const pinned = String(req.query.currency || '');
+    const converted = !pinned;
+    const currency = converted ? fx.BASE : pinned;
+
+    /* What one row contributes to the money in this view. null means it
+       cannot be counted, which is not the same as nothing. */
+    const amountOf = function (row) {
+      if (typeof row.valueAmount !== 'number') return null;
+      if (!converted) {
+        return (row.valueCurrency || 'unlabelled') === pinned ? row.valueAmount : null;
+      }
+      return fx.toBase(row.valueAmount, row.valueCurrency);
+    };
+
+    /* Runs carrying money the dirham total could not take, named so the page
+       can say which currency went missing rather than quietly dropping it. */
+    const skipped = {};
+    let skippedRuns = 0;
+    if (converted) {
+      rows.forEach(function (row) {
+        if (typeof row.valueAmount !== 'number') return;
+        if (typeof amountOf(row) === 'number') return;
+        const key = row.valueCurrency || 'unlabelled';
+        skipped[key] = (skipped[key] || 0) + 1;
+        skippedRuns += 1;
+      });
+    }
+
+    /* Three states, all of them the workflow's own: cleared as in good
+       order, blocked as not in good order, or never finished. There is no
+       fourth state waiting on a person, because nobody signs these off. */
+    const STATES = ['cleared', 'blocked', 'unfinished'];
     const buckets = {};
     const blank = function () {
       return {
-        approved: { amount: 0, count: 0 },
-        rejected: { amount: 0, count: 0 },
-        returned: { amount: 0, count: 0 },
-        pending: { amount: 0, count: 0 },
+        cleared: { amount: 0, count: 0 },
+        blocked: { amount: 0, count: 0 },
         unfinished: { amount: 0, count: 0 }
       };
     };
@@ -1036,15 +968,10 @@ app.get('/api/report', auth.requireReviewer, async function (req, res) {
       if (!row.createdAt) return;
       const month = String(row.createdAt).slice(0, 7);
       if (!buckets[month]) buckets[month] = blank();
-      // A run that never produced a verdict is counted apart from one that is
-       // waiting for a manager, so this page and the queue agree.
-      const state = row.status === 'COMPLETED' ? row.reviewState || 'pending' : 'unfinished';
-      const target = buckets[month][state] || buckets[month].pending;
+      const target = buckets[month][verdictSide(row) || 'unfinished'];
       target.count += 1;
-      const rowCurrency = row.valueCurrency || 'unlabelled';
-      if (typeof row.valueAmount === 'number' && (!currency || rowCurrency === currency)) {
-        target.amount += row.valueAmount;
-      }
+      const amount = amountOf(row);
+      if (typeof amount === 'number') target.amount += amount;
     });
 
     const months = Object.keys(buckets)
@@ -1055,7 +982,7 @@ app.get('/api/report', auth.requireReviewer, async function (req, res) {
 
     const totals = months.reduce(
       function (acc, m) {
-        ['approved', 'rejected', 'returned', 'pending', 'unfinished'].forEach(function (k) {
+        STATES.forEach(function (k) {
           acc[k].amount += m[k].amount;
           acc[k].count += m[k].count;
         });
@@ -1063,6 +990,35 @@ app.get('/api/report', auth.requireReviewer, async function (req, res) {
       },
       blank()
     );
+
+    /* The headline: the share of finished runs the workflow put straight
+       through with no issues to chase. Runs that never finished are left out
+       of both sides, because a crash is not a packet that failed validation
+       and folding it in would understate the workflow twice over. */
+    const finished = totals.cleared.count + totals.blocked.count;
+    const straightThrough = {
+      cleared: totals.cleared.count,
+      blocked: totals.blocked.count,
+      finished: finished,
+      rate: finished > 0 ? totals.cleared.count / finished : null,
+      unfinished: totals.unfinished.count
+    };
+
+    /* Issues found across the period. The reason a packet was blocked is a
+       chapter of its own that nobody has asked for yet, but the count is
+       cheap to carry and says how much work the blocked side represents. */
+    const issues = rows.reduce(
+      function (acc, row) {
+        if (typeof row.totalIssues === 'number') {
+          acc.total += row.totalIssues;
+          acc.runs += 1;
+        }
+        if (typeof row.lowConfidence === 'number') acc.lowConfidence += row.lowConfidence;
+        return acc;
+      },
+      { total: 0, runs: 0, lowConfidence: 0 }
+    );
+    issues.perBlockedRun = totals.blocked.count ? issues.total / totals.blocked.count : null;
 
     /* Average workflow run time over the period. Only runs with a recorded
        time count, and the count travels with the average so the number is
@@ -1102,16 +1058,37 @@ app.get('/api/report', auth.requireReviewer, async function (req, res) {
       range: range,
       currency: currency,
       currencies: currencyList,
+      converted: converted,
+      fx: converted
+        ? Object.assign(fx.describe(), {
+            /* The rate actually applied to each currency the period contains,
+               keyed by the symbol as it was printed, so the page can name
+               them without having to work out that "$" means USD. */
+            used: currencyList
+              .map(function (symbol) {
+                const code = fx.normalize(symbol);
+                return code ? { symbol: symbol, code: code, rate: fx.rates[code] } : null;
+              })
+              .filter(function (r) {
+                return r && typeof r.rate === 'number';
+              }),
+            skippedRuns: skippedRuns,
+            skippedCurrencies: Object.keys(skipped).sort(function (a, b) {
+              return skipped[b] - skipped[a];
+            })
+          })
+        : null,
       months: months,
       totals: totals,
+      straightThrough: straightThrough,
+      issues: issues,
       runtime: runtime,
-      people: groupBy(rows, currency, function (row) {
+      people: groupBy(rows, amountOf, function (row) {
         return { key: row.submittedBy, label: row.submittedByName || row.submittedBy };
       }),
-      firms: groupBy(rows, currency, function (row) {
+      firms: groupBy(rows, amountOf, function (row) {
         return { key: row.contraFirm, label: row.contraFirm };
       }),
-      waiting: waitingFrom(rows),
       runs: rows.length
     });
   } catch (err) {
@@ -1120,7 +1097,7 @@ app.get('/api/report', auth.requireReviewer, async function (req, res) {
 });
 
 /** What the console is pointed at. Read only: nothing here needs setting up. */
-app.get('/api/settings', auth.requireReviewer, async function (req, res) {
+app.get('/api/settings', auth.requireAdmin, async function (req, res) {
   const storage = await store.ping();
   res.json({
     workflow: {
@@ -1140,7 +1117,7 @@ app.get('/api/settings', auth.requireReviewer, async function (req, res) {
       count: auth.accountCount,
       usingDemoAccounts: auth.usingDefaultAccounts,
       sessionSecretSet: Boolean(process.env.SESSION_SECRET),
-      list: auth.canReview(req.user) && req.user.role === 'admin' ? auth.roster() : []
+      list: auth.isAdmin(req.user) ? auth.roster() : []
     },
     support: support(),
     build: {
