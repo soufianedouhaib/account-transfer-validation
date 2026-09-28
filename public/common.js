@@ -109,8 +109,11 @@
       icon: 'runs',
       match: ['/history.html']
     });
+    /* Everyone gets the report. What it covers follows the same rule as the
+       run list above it: an employee's own work, or all of it for an
+       administrator. */
+    links.push({ href: '/report.html', label: 'Report', icon: 'report', match: ['/report.html'] });
     if (me.isAdmin) {
-      links.push({ href: '/report.html', label: 'Report', icon: 'report', match: ['/report.html'] });
       links.push({
         href: '/settings.html',
         label: 'Settings',

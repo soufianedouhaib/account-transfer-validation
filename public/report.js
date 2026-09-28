@@ -1,5 +1,10 @@
-/* Report: a ribbon of figures that stays put, and five chapters that slide in
+/* Report: a ribbon of figures that stays put, and the chapters that slide in
    beside it.
+
+   Everyone has this page. What it covers follows whose runs the server will
+   hand over: an employee's own work, or all of it for an administrator. The
+   scope comes back in the payload rather than being worked out here, so the
+   page can never show a heading that claims more than the figures cover.
 
    Two series throughout, cleared and held back, so two categorical hues: the
    brand blue and an orange. Never green against red, which is the pair most
@@ -434,6 +439,12 @@
     {
       title: 'By employee',
       blurb: 'Who submitted what',
+      /* A report covering one person's own runs would rank that person
+         against nobody, so the chapter is left out rather than shown as a
+         single bar labelled with their own name. */
+      when: function (report) {
+        return report.scope !== 'mine';
+      },
       build: function (report) {
         return panelRank(
           report,
@@ -459,10 +470,20 @@
     }
   ];
 
+  /* The chapters this report actually has, which depends on whose runs are
+     in it. Everything downstream indexes into this, never into CHAPTERS. */
+  var chapters = CHAPTERS.slice();
+
+  function chaptersFor(report) {
+    return CHAPTERS.filter(function (ch) {
+      return !ch.when || ch.when(report);
+    });
+  }
+
   function renderChapterList() {
     var host = $('#chapter-list');
     host.innerHTML = '';
-    CHAPTERS.forEach(function (ch, i) {
+    chapters.forEach(function (ch, i) {
       var b = el('button', 'chapter' + (i === chapter ? ' is-current' : ''));
       b.type = 'button';
       b.setAttribute('aria-current', i === chapter ? 'true' : 'false');
@@ -483,8 +504,8 @@
   function renderChapter() {
     var host = $('#chapter-body');
     host.innerHTML = '';
-    if (!current) return;
-    host.appendChild(CHAPTERS[chapter].build(current));
+    if (!current || !chapters[chapter]) return;
+    host.appendChild(chapters[chapter].build(current));
 
     /* Anything that had to know its own width is filled once it is on screen. */
     var chartHost = host.querySelector('[data-needs-chart]');
@@ -627,12 +648,26 @@
     note.hidden = false;
   }
 
+  /* Says whose runs these are, once, at the top. An employee reading figures
+     that cover only their own work should not have to infer that. */
+  function renderScope(report) {
+    var mine = report.scope === 'mine';
+    $('#report-lede').textContent = mine
+      ? 'Your runs: how many the workflow put straight through, what it held back, and how long it took.'
+      : 'How much the workflow put straight through, what it held back, and how long it took.';
+    /* The export is the whole team's data, so it stays with the people who
+       can see the whole team. */
+    $('#export-link').hidden = mine;
+  }
+
   function load() {
     var range = currentRange();
     var query = ATV.rangeQuery(range);
     var currency = $('#filter-currency').value;
     if (currency) query += (query ? '&' : '') + 'currency=' + encodeURIComponent(currency);
-    $('#export-link').href = '/api/export.csv' + (query ? '?' + query : '');
+    if (!$('#export-link').hidden) {
+      $('#export-link').href = '/api/export.csv' + (query ? '?' + query : '');
+    }
 
     ATV.fetchJson('/api/report' + (query ? '?' + query : ''))
       .then(function (report) {
@@ -644,6 +679,14 @@
         }
         $('#report-note').hidden = true;
         current = report;
+
+        /* Which chapters exist depends on the scope, so the list is rebuilt
+           before anything indexes into it, and a chapter that has gone takes
+           the reader back to the first one rather than to nothing. */
+        chapters = chaptersFor(report);
+        if (chapter >= chapters.length) chapter = 0;
+
+        renderScope(report);
         renderRibbon(report);
         renderChapterList();
         renderChapter();
@@ -658,37 +701,34 @@
       });
   }
 
-  ATV.boot(
-    function () {
-      ['#filter-preset', '#filter-month', '#filter-from', '#filter-to', '#filter-currency'].forEach(
-        function (sel) {
-          $(sel).addEventListener('change', function () {
-            syncControls();
-            load();
-          });
-        }
-      );
-      syncControls();
-      load();
+  ATV.boot(function () {
+    ['#filter-preset', '#filter-month', '#filter-from', '#filter-to', '#filter-currency'].forEach(
+      function (sel) {
+        $(sel).addEventListener('change', function () {
+          syncControls();
+          load();
+        });
+      }
+    );
+    syncControls();
+    load();
 
-      /* Redraw the month chart when its column changes width, so it is always
-         drawn at the size it is shown at. Debounced: a drag across the window
-         edge fires this continuously. */
-      var lastWidth = 0;
-      var timer = null;
-      window.addEventListener('resize', function () {
-        var host = document.querySelector('[data-needs-chart]');
-        if (!host || !current) return;
-        var width = Math.round(host.clientWidth);
-        if (Math.abs(width - lastWidth) < 8) return;
-        lastWidth = width;
-        if (timer) clearTimeout(timer);
-        timer = setTimeout(function () {
-          host.innerHTML = monthsChart(current, width);
-          wireTooltip($('#chapter-body'));
-        }, 120);
-      });
-    },
-    { need: 'admin' }
-  );
+    /* Redraw the month chart when its column changes width, so it is always
+       drawn at the size it is shown at. Debounced: a drag across the window
+       edge fires this continuously. */
+    var lastWidth = 0;
+    var timer = null;
+    window.addEventListener('resize', function () {
+      var host = document.querySelector('[data-needs-chart]');
+      if (!host || !current) return;
+      var width = Math.round(host.clientWidth);
+      if (Math.abs(width - lastWidth) < 8) return;
+      lastWidth = width;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(function () {
+        host.innerHTML = monthsChart(current, width);
+        wireTooltip($('#chapter-body'));
+      }, 120);
+    });
+  });
 })();
