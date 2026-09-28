@@ -78,8 +78,6 @@
     submit:
       '<path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5"/><path d="M4 16v2.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V16"/>',
     runs: '<path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>',
-    queue:
-      '<path d="M3 13h4l2 3h6l2-3h4"/><path d="M5 5h14l2 8v5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-5z"/>',
     report: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
     settings:
       '<circle cx="12" cy="12" r="3.2"/><path d="M19.4 14.5a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5v.2a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1h.2a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/>',
@@ -105,21 +103,13 @@
     if (me.canSubmit) {
       links.push({ href: '/', label: 'New validation', icon: 'submit', match: ['/', '/index.html'] });
     }
-    if (me.canReview) {
-      links.push({
-        href: '/review.html',
-        label: 'Transfer requests',
-        icon: 'queue',
-        match: ['/review.html']
-      });
-    }
     links.push({
       href: '/history.html',
-      label: me.canReview ? 'All runs' : 'My runs',
+      label: me.canSeeAll ? 'All runs' : 'My runs',
       icon: 'runs',
       match: ['/history.html']
     });
-    if (me.canReview) {
+    if (me.isAdmin) {
       links.push({ href: '/report.html', label: 'Report', icon: 'report', match: ['/report.html'] });
       links.push({
         href: '/settings.html',
@@ -270,7 +260,7 @@
       'aria-expanded="false" title="Keep the menu open" aria-label="Keep the menu open">' +
       icon('chevron') +
       '</button>' +
-      '<a class="brand-lockup" href="' + (me.canSubmit ? '/' : '/review.html') + '" title="Account Transfer Validation">' +
+      '<a class="brand-lockup" href="/" title="Account Transfer Validation">' +
       '<span class="label">Account Transfer Validation</span>' +
       '</a>' +
       '</div>' +
@@ -324,7 +314,7 @@
       fetchJson('/api/logout', { method: 'POST' })
         .catch(function () {})
         .then(function () {
-          location.href = me.canReview && !me.canSubmit ? '/review-login.html' : '/login.html';
+          location.href = me.isAdmin ? '/admin-login.html' : '/login.html';
         });
     });
   }
@@ -344,9 +334,9 @@
 
   /**
    * One call for the shared chrome and the session gate.
-   *   ATV.boot(fn)                        a signed in user of any role
-   *   ATV.boot(fn, { need: 'reviewer' })  managers and the admin only
-   *   ATV.boot(fn, { need: 'public' })    the sign in pages
+   *   ATV.boot(fn)                     a signed in user of any role
+   *   ATV.boot(fn, { need: 'admin' })  the administrator only
+   *   ATV.boot(fn, { need: 'public' }) the sign in pages
    */
   function boot(onReady, options) {
     var need = (options && options.need) || 'user';
@@ -356,12 +346,12 @@
           location.replace('/login.html?next=' + encodeURIComponent(location.pathname + location.search));
           return;
         }
-        if (need === 'reviewer' && !me.canReview) {
+        if (need === 'admin' && !me.isAdmin) {
           location.replace('/');
           return;
         }
         if (need === 'public' && me.signedIn) {
-          location.replace(me.canReview && !me.canSubmit ? '/review.html' : '/');
+          location.replace('/');
           return;
         }
         renderNav(need === 'public' ? null : me);
@@ -429,22 +419,6 @@
       return '<span class="pill pill-bad"><span class="glyph">!</span>Not in good order</span>';
     }
     return '<span class="pill">Not determined</span>';
-  }
-
-  var REVIEW_TEXT = {
-    approved: { label: 'Approved', cls: 'pill pill-ok', glyph: '✓' },
-    rejected: { label: 'Rejected', cls: 'pill pill-bad', glyph: '✕' },
-    returned: { label: 'Sent back', cls: 'pill pill-warn', glyph: '↩' },
-    pending: { label: 'Awaiting review', cls: 'pill', glyph: '◷' }
-  };
-
-  function reviewPill(state) {
-    var spec = REVIEW_TEXT[state] || REVIEW_TEXT.pending;
-    return '<span class="' + spec.cls + '"><span class="glyph">' + spec.glyph + '</span>' + spec.label + '</span>';
-  }
-
-  function reviewLabel(state) {
-    return (REVIEW_TEXT[state] || REVIEW_TEXT.pending).label;
   }
 
   function severityPill(severity) {
@@ -684,8 +658,6 @@
     onAuthLoss: onAuthLoss,
     statusPill: statusPill,
     verdictPill: verdictPill,
-    reviewPill: reviewPill,
-    reviewLabel: reviewLabel,
     severityPill: severityPill,
     fieldLabel: fieldLabel,
     pathLabel: pathLabel,

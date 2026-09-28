@@ -1,5 +1,6 @@
-/* One validation: poll our own status route, render the decision, show the
-   submitted packet, and let a reviewer record approve, reject or send back.
+/* One validation: poll our own status route, render the verdict, show the
+   submitted packet. The workflow's verdict is the outcome: nobody signs it
+   off afterwards.
    The browser never talks to Opus. */
 
 (function () {
@@ -203,17 +204,13 @@
     );
   }
 
-  /* The workflow finding a packet clean is not the same as a reviewer letting
-     it go, so the card says which of the two has happened. */
-  function reviewGatePill() {
-    var state = latest && latest.review ? latest.review.decision : 'pending';
-    if (state === 'approved') {
-      return '<span class="pill pill-ok"><span class="glyph">✓</span>Approved to send</span>';
+  /* The workflow assembles this package only when it finds the packet in good
+     order, and its own flag says whether it considers it sendable. */
+  function packageGatePill(pkg) {
+    if (pkg && pkg.ready_to_send === false) {
+      return '<span class="pill pill-warn"><span class="glyph">▲</span>Not ready to send</span>';
     }
-    if (state === 'rejected' || state === 'returned') {
-      return ATV.reviewPill(state);
-    }
-    return '<span class="pill"><span class="glyph">◷</span>Awaiting reviewer approval</span>';
+    return '<span class="pill pill-ok"><span class="glyph">✓</span>Ready to send</span>';
   }
 
   function packageHtml(pkg) {
@@ -237,7 +234,7 @@
     return (
       '<section class="card">' +
       '<div class="card-head"><h2>What would be sent to the contra firm</h2>' +
-      reviewGatePill() +
+      packageGatePill(pkg) +
       '</div>' +
       pairs(copy, order, null, 'package') +
       '</section>'
@@ -314,108 +311,6 @@
     );
   }
 
-  /* ---------------------------- the decision -------------------------- */
-
-  function decisionBannerHtml(review) {
-    if (!review) return '';
-    var tone =
-      review.decision === 'approved' ? 'is-ok' : review.decision === 'rejected' ? 'is-bad' : 'is-warn';
-    var glyph = review.decision === 'approved' ? '✓' : review.decision === 'rejected' ? '✕' : '↩';
-    return (
-      '<div class="verdict ' +
-      tone +
-      '" style="margin-bottom: 16px">' +
-      '<div class="verdict-mark">' +
-      glyph +
-      '</div>' +
-      '<div class="verdict-body">' +
-      '<div class="verdict-title">Reviewer decision: ' +
-      esc(ATV.reviewLabel(review.decision)) +
-      '</div>' +
-      '<div class="verdict-sub">' +
-      (review.note ? ATV.escMasked(review.note) + ' ' : '') +
-      '<span class="quiet">Recorded by ' +
-      esc(review.byName || review.by) +
-      ' on ' +
-      esc(ATV.formatTime(review.at)) +
-      '.</span>' +
-      '</div></div></div>'
-    );
-  }
-
-  function reviewFormHtml(payload) {
-    if (!payload.canReview || !payload.terminal) return '';
-    var current = payload.review ? payload.review.decision : null;
-    return (
-      '<section class="card" id="review-card">' +
-      '<div class="card-head"><h2>Your decision</h2>' +
-      ATV.reviewPill(current || 'pending') +
-      '</div>' +
-      '<div class="choices" role="radiogroup" aria-label="Decision">' +
-      '<label class="choice"><input type="radio" name="decision" value="approved"' +
-      (current === 'approved' ? ' checked' : '') +
-      '><span><strong>Approve</strong>Send the transfer on to the contra firm.</span></label>' +
-      '<label class="choice"><input type="radio" name="decision" value="returned"' +
-      (current === 'returned' ? ' checked' : '') +
-      '><span><strong>Send back</strong>The advisor corrects the packet and resubmits.</span></label>' +
-      '<label class="choice"><input type="radio" name="decision" value="rejected"' +
-      (current === 'rejected' ? ' checked' : '') +
-      '><span><strong>Reject</strong>The request cannot proceed at all.</span></label>' +
-      '</div>' +
-      '<label class="field" style="margin-top: 16px">' +
-      '<span>Note for the advisor, required unless you approve</span>' +
-      '<textarea id="review-note" rows="3" placeholder="What the advisor needs to know, or what to fix">' +
-      esc((payload.review && payload.review.note) || '') +
-      '</textarea>' +
-      '</label>' +
-      '<div id="review-error" class="notice notice-bad" hidden></div>' +
-      '<button type="button" class="btn" id="review-save">' +
-      (current ? 'Update the decision' : 'Record the decision') +
-      '</button>' +
-      '</section>'
-    );
-  }
-
-  function wireReviewForm() {
-    var button = $('#review-save');
-    if (!button) return;
-    button.addEventListener('click', function () {
-      var picked = document.querySelector('input[name="decision"]:checked');
-      var box = $('#review-error');
-      box.hidden = true;
-      if (!picked) {
-        box.textContent = 'Choose approve, send back or reject first.';
-        box.hidden = false;
-        return;
-      }
-      button.disabled = true;
-      var was = button.textContent;
-      button.textContent = 'Saving';
-      ATV.fetchJson('/api/case/' + encodeURIComponent(caseId) + '/review', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ decision: picked.value, note: $('#review-note').value })
-      })
-        .then(function (out) {
-          latest.review = out.review;
-          latest.row = out.row;
-          $('#decision-slot').innerHTML = decisionBannerHtml(out.review);
-          $('#review-slot').innerHTML = reviewFormHtml(latest);
-          wireReviewForm();
-          renderActions(latest);
-          renderJumpBar(latest);
-          renderMeta(latest.row, latest.status);
-        })
-        .catch(function (err) {
-          if (ATV.onAuthLoss(err)) return;
-          button.disabled = false;
-          button.textContent = was;
-          box.textContent = err.message;
-          box.hidden = false;
-        });
-    });
-  }
-
   /* ------------------------------ rendering --------------------------- */
 
   function renderResult(payload) {
@@ -462,7 +357,7 @@
       extractedBody +
       '</section>';
 
-    var raw = me && me.canReview
+    var raw = me && me.isAdmin
       ? '<details class="raw"><summary>Raw workflow output</summary><pre>' +
         ATV.escMasked(JSON.stringify({ result: payload.result, explanation: payload.explanation }, null, 2)) +
         '</pre></details>'
@@ -536,27 +431,23 @@
     afterTerminal(payload);
   }
 
-  /* The packet and the decision belong to both endings. */
+  /* The packet belongs to both endings. */
   function afterTerminal(payload) {
-    $('#decision-slot').innerHTML = decisionBannerHtml(payload.review);
     $('#document-slot').innerHTML = documentHtml(payload.row);
-    $('#review-slot').innerHTML = reviewFormHtml(payload);
-    wireReviewForm();
     renderActions(payload);
-    renderJumpBar(payload);
   }
 
-  /* The advisor's next step depends on what came back. A packet that was sent
-     back needs a resubmit, not a generic "validate another". */
+  /* A packet the workflow blocked needs fixing and resubmitting; one it
+     cleared needs nothing further, so the next step is simply the next
+     packet. */
   function renderActions(payload) {
     var copy = $('#copy-json');
-    if (copy) copy.hidden = !(me && me.canReview) || !payload.result;
+    if (copy) copy.hidden = !(me && me.isAdmin) || !payload.result;
 
     var primary = $('#action-new');
     if (!primary || !me || !me.canSubmit) return;
-    var sentBack = payload.review && payload.review.decision === 'returned';
-    var title = (payload.row && payload.row.title) || '';
-    if (sentBack) {
+    var blocked = payload.row && payload.row.verdict === 'NIGO';
+    if (blocked) {
       primary.textContent = 'Resubmit this packet';
       primary.href = '/?from=' + encodeURIComponent(caseId);
     } else {
@@ -565,30 +456,10 @@
     }
   }
 
-  /* A reviewer with a pending run gets one persistent way to the decision,
-     however long the findings and the packet run. */
-  function renderJumpBar(payload) {
-    var existing = document.getElementById('jump-bar');
-    if (existing) existing.parentNode.removeChild(existing);
-    if (!me || !me.canReview || !payload.terminal) return;
-    if (payload.review) return;
-    var bar = document.createElement('div');
-    bar.id = 'jump-bar';
-    bar.className = 'jump-bar';
-    bar.innerHTML =
-      '<span>This run is waiting for your decision.</span>' +
-      '<button type="button" class="btn btn-small" id="jump-btn">Go to the decision</button>';
-    document.body.appendChild(bar);
-    document.getElementById('jump-btn').addEventListener('click', function () {
-      var card = document.getElementById('review-card');
-      if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    });
-  }
-
   function renderMeta(row, status) {
     var bits = [];
     bits.push('Case ' + esc(caseId));
-    if (row && row.submittedByName && me && me.canReview) {
+    if (row && row.submittedByName && me && me.canSeeAll) {
       bits.push('Submitted by ' + esc(row.submittedByName));
     }
     if (row && row.createdAt) bits.push('Submitted ' + esc(ATV.formatTime(row.createdAt)));
@@ -605,11 +476,6 @@
           esc(ATV.duration(row.runtimeMs)) +
           '</span>'
       );
-    }
-    // Only a finished run can be waiting for a manager. A run still going, or
-    // one that crashed, says so once in the status pill and nowhere else.
-    if (row && status === 'COMPLETED' && row.reviewState === 'pending') {
-      bits.push(ATV.reviewPill('pending'));
     }
     $('#case-meta').innerHTML = bits
       .map(function (b) {
@@ -660,13 +526,9 @@
 
   ATV.boot(function (user) {
     me = user;
-    if (me.canReview) {
-      $('#action-new').hidden = !me.canSubmit;
-      $('#action-list').textContent = 'Back to the queue';
-      $('#action-list').href = '/review.html';
-    } else {
-      $('#action-list').textContent = 'My runs';
-    }
+    $('#action-new').hidden = !me.canSubmit;
+    $('#action-list').textContent = me.canSeeAll ? 'All runs' : 'My runs';
+    $('#action-list').href = '/history.html';
 
     if (!caseId) {
       $('#running').hidden = true;

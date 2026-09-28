@@ -13,7 +13,7 @@
     <main class="page" id="main" hidden>
       <div class="page-head">
         <h1>Report</h1>
-        <p id="report-lede">What was submitted, what a manager decided, and how long the workflow took.</p>
+        <p id="report-lede">How much the workflow put straight through, what it held back, and how long it took.</p>
       </div>
 
       <section class="card report-card">
@@ -22,19 +22,19 @@
         <div class="ribbon" id="ribbon">
           <div class="rb-figures">
           <div class="rb">
-            <span class="rb-k">Approved</span>
-            <span class="rb-v rb-ok" id="k-approved">—</span>
-            <span class="rb-s" id="k-approved-sub">—</span>
-          </div>
-          <div class="rb">
-            <span class="rb-k">Rejected</span>
-            <span class="rb-v rb-bad" id="k-rejected">—</span>
-            <span class="rb-s" id="k-rejected-sub">—</span>
-          </div>
-          <div class="rb">
-            <span class="rb-k">Approved share</span>
+            <span class="rb-k">Straight through</span>
             <span class="rb-v" id="k-rate">—</span>
-            <span class="rb-s">of decided value</span>
+            <span class="rb-s" id="k-rate-sub">—</span>
+          </div>
+          <div class="rb">
+            <span class="rb-k">Value cleared</span>
+            <span class="rb-v rb-ok" id="k-cleared">—</span>
+            <span class="rb-s" id="k-cleared-sub">—</span>
+          </div>
+          <div class="rb">
+            <span class="rb-k">Value held back</span>
+            <span class="rb-v rb-bad" id="k-blocked">—</span>
+            <span class="rb-s" id="k-blocked-sub">—</span>
           </div>
           <div class="rb">
             <span class="rb-k">Runs</span>
@@ -64,10 +64,15 @@
               <input type="date" id="filter-from" aria-label="From" />
               <input type="date" id="filter-to" aria-label="To" />
             </span>
-            <select id="filter-currency" aria-label="Currency" hidden></select>
+            <select id="filter-currency" aria-label="How to count the money" hidden></select>
             <a class="btn btn-quiet btn-small" id="export-link" href="/api/export.csv">Export CSV</a>
           </div>
         </div>
+
+        <!-- A converted figure is never left to look like money that was
+             actually in dirhams: the rates and the day they were taken are
+             printed with it. -->
+        <p class="fx-note" id="fx-note" hidden></p>
 
         <div class="chapters">
           <nav class="chapter-list" id="chapter-list" aria-label="Report chapters"></nav>
@@ -92,17 +97,17 @@
         </div>
         <div class="headline">
           <div class="headline-nums">
-            <div class="big big-ok" data-slot="approved">0</div>
-            <p class="big-sub" data-slot="approved-sub">—</p>
-            <div class="big big-bad" data-slot="rejected">0</div>
-            <p class="big-sub" data-slot="rejected-sub">—</p>
+            <div class="big big-ok" data-slot="cleared">0</div>
+            <p class="big-sub" data-slot="cleared-sub">—</p>
+            <div class="big big-bad" data-slot="blocked">0</div>
+            <p class="big-sub" data-slot="blocked-sub">—</p>
           </div>
           <figure class="ring-wrap">
             <svg class="ring" viewBox="0 0 120 120" role="img" data-slot="ring-label">
               <circle class="ring-track" cx="60" cy="60" r="48"></circle>
               <circle class="ring-arc" cx="60" cy="60" r="48" data-slot="arc"></circle>
               <text class="ring-pct" x="60" y="57" text-anchor="middle" data-slot="pct">0%</text>
-              <text class="ring-cap" x="60" y="76" text-anchor="middle">approved</text>
+              <text class="ring-cap" x="60" y="76" text-anchor="middle">cleared</text>
             </svg>
             <figcaption class="ring-note" data-slot="ring-note">—</figcaption>
           </figure>
@@ -123,12 +128,12 @@
         <div class="chart-wrap">
           <div data-slot="chart"></div>
         </div>
-        <p class="empty" data-slot="empty" hidden><strong>Nothing to plot yet</strong>No runs were decided in this period.</p>
+        <p class="empty" data-slot="empty" hidden><strong>Nothing to plot yet</strong>No run finished in this period.</p>
         <details class="chart-data">
           <summary>See the numbers</summary>
           <div class="table-wrap">
             <table class="data-table" id="chart-table">
-              <thead><tr><th>Month</th><th class="num">Approved</th><th class="num">Rejected</th><th class="num">Runs</th></tr></thead>
+              <thead><tr><th>Month</th><th class="num">Cleared</th><th class="num">Held back</th><th class="num">Runs</th></tr></thead>
               <tbody data-slot="table"></tbody>
             </table>
           </div>
@@ -146,22 +151,10 @@
           <div class="legend" data-slot="legend"></div>
         </div>
         <div class="rank" data-slot="rank"></div>
-        <p class="empty" data-slot="empty" hidden><strong>Nothing to rank yet</strong>No decided runs in this period.</p>
+        <p class="empty" data-slot="empty" hidden><strong>Nothing to rank yet</strong>No run finished in this period.</p>
       </div>
     </template>
 
-    <template id="tpl-waiting">
-      <div class="ch-panel">
-        <div class="ch-head">
-          <div>
-            <p class="ch-eyebrow">Still waiting</p>
-            <h2 class="ch-title" data-slot="title">—</h2>
-          </div>
-        </div>
-        <div class="waiting-list" data-slot="list"></div>
-        <p class="empty" data-slot="empty" hidden><strong>Nothing is waiting</strong>Every finished run in this period has a decision on it.</p>
-      </div>
-    </template>
 
     <script src="/common.js"></script>
     <script src="/report.js"></script>

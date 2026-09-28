@@ -1,4 +1,4 @@
-/* The run list. An advisor sees their own runs. A reviewer or the admin sees
+/* The run list. An employee sees their own runs. The administrator sees
    everyone's, and can narrow to their own with the scope control. */
 
 (function () {
@@ -7,7 +7,7 @@
   var $ = ATV.$;
   var esc = ATV.esc;
   var rows = [];
-  var canReview = false;
+  var seesEveryone = false;
 
 
   /* The period controls are shared with the report, so they behave the same
@@ -100,8 +100,8 @@
     if (!rows.length) {
       $('#history-body').innerHTML =
         '<div class="empty"><strong>No runs yet</strong>' +
-        (canReview
-          ? 'Runs appear here as advisors submit packets.'
+        (seesEveryone
+          ? 'Runs appear here as the team submits packets.'
           : 'Packets you validate appear here once you submit one.') +
         '</div>';
       return;
@@ -135,7 +135,7 @@
           '>' +
           esc(row.clientName || '') +
           '</td>' +
-          (canReview
+          (seesEveryone
             ? '<td data-label="Submitted by">' + esc(row.submittedByName || row.submittedBy || '') + '</td>'
             : '<td data-label="Contra firm">' + esc(row.contraFirm || '') + '</td>') +
           '<td data-label="Workflow"><div>' +
@@ -156,11 +156,6 @@
           '>' +
           (typeof row.runtimeMs === 'number' ? esc(ATV.duration(row.runtimeMs)) : '') +
           '</td>' +
-          '<td data-label="Review">' +
-          (row.status === 'COMPLETED'
-            ? ATV.reviewPill(row.reviewState)
-            : '<span class="quiet">Not applicable</span>') +
-          '</td>' +
           '<td data-label="Submitted">' +
           esc(ATV.formatTime(row.createdAt)) +
           '</td>' +
@@ -172,9 +167,9 @@
     $('#history-body').innerHTML =
       '<div class="table-wrap"><table class="history-table data-table"><thead><tr>' +
       '<th>Reference</th><th>Client</th><th>' +
-      (canReview ? 'Submitted by' : 'Contra firm') +
+      (seesEveryone ? 'Submitted by' : 'Contra firm') +
       '</th><th>Workflow</th>' +
-      '<th class="num">Issues</th><th class="num">Run time</th><th>Review</th><th>Submitted</th>' +
+      '<th class="num">Issues</th><th class="num">Run time</th><th>Submitted</th>' +
       '</tr></thead><tbody>' +
       body +
       '</tbody></table></div>';
@@ -221,7 +216,7 @@
         .then(function (out) {
           showConfirm(false);
           clearResult(out);
-          load(canReview ? $('#filter-scope').value : '');
+          load(seesEveryone ? $('#filter-scope').value : '');
         })
         .catch(function (err) {
           if (ATV.onAuthLoss(err)) return;
@@ -242,7 +237,7 @@
   function load(scope) {
     var range = currentRange();
     var query = ATV.rangeQuery(range);
-    if (canReview) {
+    if (seesEveryone) {
       $('#export-link').href = '/api/export.csv' + (query ? '?' + query : '');
     }
     $('#history-body').innerHTML = '<div class="skeleton">Loading</div>';
@@ -266,19 +261,19 @@
   }
 
   ATV.boot(function (me) {
-    canReview = Boolean(me.canReview);
+    seesEveryone = Boolean(me.canSeeAll);
     $('#filter-outcome').addEventListener('change', render);
     $('#filter-text').addEventListener('input', render);
 
     ['#filter-preset', '#filter-month', '#filter-from', '#filter-to'].forEach(function (sel) {
       $(sel).addEventListener('change', function () {
         syncPeriodControls();
-        load(canReview ? $('#filter-scope').value : '');
+        load(seesEveryone ? $('#filter-scope').value : '');
       });
     });
     syncPeriodControls();
 
-    if (canReview) {
+    if (seesEveryone) {
       $('#export-link').hidden = false;
       /* An employee's list is their own work only, so a "who" filter there
          would offer a choice of one. */

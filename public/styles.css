@@ -1892,8 +1892,8 @@ body.is-waiting .waiting {
    the same two tokens. These used to sit on a wrapper class, which meant any
    page without that wrapper silently lost every series colour. */
 :root {
-  --series-approved: #387bf0;
-  --series-rejected: #eb6834;
+  --series-cleared: #387bf0;
+  --series-blocked: #eb6834;
   --grid: var(--line);
 }
 
@@ -1901,14 +1901,14 @@ body.is-waiting .waiting {
    the theme attribute is simply absent. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    --series-approved: #3987e5;
-    --series-rejected: #d95926;
+    --series-cleared: #3987e5;
+    --series-blocked: #d95926;
   }
 }
 
 :root[data-theme='dark'] {
-  --series-approved: #3987e5;
-  --series-rejected: #d95926;
+  --series-cleared: #3987e5;
+  --series-blocked: #d95926;
 }
 
 .chart {
@@ -1934,12 +1934,38 @@ body.is-waiting .waiting {
   font-variant-numeric: tabular-nums;
 }
 
-.chart .bar-approved {
-  fill: var(--series-approved);
+.chart .bar-cleared {
+  fill: var(--series-cleared);
 }
 
-.chart .bar-rejected {
-  fill: var(--series-rejected);
+.chart .bar-blocked {
+  fill: var(--series-blocked);
+}
+
+/* Bars rise from the baseline when the chapter opens. Scaled rather than
+   sized, because the baseline is where a bar chart is read from and a
+   transform keeps the grid and the labels perfectly still. */
+.chart .bar-cleared,
+.chart .bar-blocked {
+  transform-box: fill-box;
+  transform-origin: bottom;
+  animation: bar-rise 0.55s cubic-bezier(0.22, 0.8, 0.2, 1) both;
+}
+
+@keyframes bar-rise {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chart .bar-cleared,
+  .chart .bar-blocked {
+    animation: none;
+  }
 }
 
 .chart rect.hit {
@@ -1971,12 +1997,12 @@ body.is-waiting .waiting {
   white-space: nowrap;
 }
 
-.legend .swatch-approved {
-  background: var(--series-approved);
+.legend .swatch-cleared {
+  background: var(--series-cleared);
 }
 
-.legend .swatch-rejected {
-  background: var(--series-rejected);
+.legend .swatch-blocked {
+  background: var(--series-blocked);
 }
 
 .chart-tip {
@@ -2095,11 +2121,11 @@ body.is-waiting .waiting {
 }
 
 .rb-ok {
-  color: var(--series-approved);
+  color: var(--series-cleared);
 }
 
 .rb-bad {
-  color: var(--series-rejected);
+  color: var(--series-blocked);
 }
 
 .rb-s {
@@ -2107,11 +2133,32 @@ body.is-waiting .waiting {
   color: var(--muted);
 }
 
+/* The basis for every converted figure above it. Quiet, but never hidden:
+   a dirham total made of dollars has to say so. */
+.fx-note {
+  margin: 0;
+  padding: 10px 24px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+}
+
 .rb-controls {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+/* Controls here size to their longest option. Without this they inherit the
+   full width rule for form fields, which resolves against the row rather
+   than the text and clips the label mid word. */
+.rb-controls select,
+.rb-controls input {
+  width: auto;
+  max-width: none;
 }
 
 .chapters {
@@ -2268,11 +2315,11 @@ body.is-waiting .waiting {
 }
 
 .big-ok {
-  color: var(--series-approved);
+  color: var(--series-cleared);
 }
 
 .big-bad {
-  color: var(--series-rejected);
+  color: var(--series-blocked);
   margin-top: 18px;
 }
 
@@ -2306,7 +2353,7 @@ body.is-waiting .waiting {
    the middle and the caption underneath says what it is a share of. */
 .ring-arc {
   fill: none;
-  stroke: var(--series-approved);
+  stroke: var(--series-cleared);
   stroke-width: 12;
   stroke-linecap: round;
   transform: rotate(-90deg);
@@ -2404,14 +2451,24 @@ body.is-waiting .waiting {
 .rank-bar {
   border-radius: 0 4px 4px 0;
   min-width: 0;
+  /* Set to nothing in the markup and given its real width a frame later, so
+     the row grows in rather than snapping. */
+  width: 0;
+  transition: width 0.62s cubic-bezier(0.22, 0.8, 0.2, 1);
 }
 
-.rank-approved {
-  background: var(--series-approved);
+@media (prefers-reduced-motion: reduce) {
+  .rank-bar {
+    transition: none;
+  }
 }
 
-.rank-rejected {
-  background: var(--series-rejected);
+.rank-cleared {
+  background: var(--series-cleared);
+}
+
+.rank-blocked {
+  background: var(--series-blocked);
 }
 
 .rank-value {

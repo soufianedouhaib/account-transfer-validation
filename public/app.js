@@ -152,13 +152,13 @@
   }
 
   /* Opus takes an upload and offers nothing that reads it back, so the packet
-     a manager opens has to be this console's own copy. The same bytes go up a
-     second time, in chunks, because a serverless request body and a REST store
-     request are both capped well below the 10 MB a packet may run to.
+     anyone opens later has to be this console's own copy. The same bytes go up
+     a second time, in chunks, because a serverless request body and a REST
+     store request are both capped well below the 10 MB a packet may run to.
 
      Everything here is best effort. The validation is already running by the
-     time this starts, so a store that is switched off, full or slow costs the
-     reviewer a preview and costs the submitter nothing. */
+     time this starts, so a store that is switched off, full or slow costs a
+     preview and costs the submitter nothing. */
   var PACKET_PART_BYTES = 512 * 1024;
   var PACKET_MAX_BYTES = 20 * PACKET_PART_BYTES;
 
@@ -172,13 +172,13 @@
 
     function sendPart(i) {
       if (i >= parts) return Promise.resolve(true);
-      setBusy(true, parts > 1 ? 'Keeping a copy for review, ' + (i + 1) + ' of ' + parts : 'Keeping a copy for review');
+      setBusy(true, parts > 1 ? 'Keeping a copy of the packet, ' + (i + 1) + ' of ' + parts : 'Keeping a copy of the packet');
       return ATV.fetchJson(base + '&part=' + i, {
         method: 'PUT',
         body: file.slice(i * PACKET_PART_BYTES, (i + 1) * PACKET_PART_BYTES),
         /* A Blob carved out of a File carries no type, and a body with no
            Content-Type never reaches the raw parser. The packet's real type
-           travels beside it, for the reviewer's viewer to use later. */
+           travels beside it, for the viewer to use later. */
         headers: {
           'Content-Type': 'application/octet-stream',
           'x-file-type': file.type || 'application/octet-stream'
@@ -224,8 +224,8 @@
         });
       })
       .then(function (out) {
-        // The run is already going. Keeping the reviewer's copy is best effort
-        // from here on: a failure there must not look like a failed submission.
+        // The run is already going. Keeping our own copy is best effort from
+        // here on: a failure there must not look like a failed submission.
         return keepPacket(out.caseId, chosen).then(function () {
           return out;
         });
@@ -270,9 +270,6 @@
             ? ATV.verdictPill(row.verdict)
             : ATV.statusPill(row.status)) +
           '</td>' +
-          '<td data-label="Review">' +
-          (row.status === 'COMPLETED' ? ATV.reviewPill(row.reviewState) : '') +
-          '</td>' +
           '<td class="num" data-label="Issues"' +
           (typeof row.totalIssues === 'number' ? '' : ' data-empty="1"') +
           '><div>' +
@@ -295,7 +292,7 @@
 
     $('#recent-body').innerHTML =
       '<div class="table-wrap"><table class="data-table"><thead><tr>' +
-      '<th>Reference</th><th>Client</th><th>Workflow</th><th>Review</th><th class="num">Issues</th><th>Submitted</th>' +
+      '<th>Reference</th><th>Client</th><th>Workflow</th><th class="num">Issues</th><th>Submitted</th>' +
       '</tr></thead><tbody>' +
       body +
       '</tbody></table></div>';
@@ -303,13 +300,6 @@
 
   ATV.boot(function (user) {
     me = user;
-    // A reviewer account has no submit screen. Send it to the queue instead of
-    // showing a form its session cannot use.
-    if (!me.canSubmit) {
-      location.replace('/review.html');
-      return;
-    }
-
     var zone = $('#dropzone');
     var input = $('#file-input');
 
@@ -345,12 +335,14 @@
         .then(function (payload) {
           var row = payload.row || {};
           if (row.title) $('#title').value = row.title;
-          var note = payload.review && payload.review.note;
+          /* What the workflow found last time is the reason this packet is
+             back, so it is what the note repeats. */
+          var summary = payload.result && payload.result.decision_summary;
           $('#resubmit-note').innerHTML =
             '<span class="glyph">▪</span> <strong>Resubmitting ' +
             esc(row.title || 'a corrected packet') +
             '.</strong>' +
-            (note ? ' The reviewer asked for: ' + ATV.escMasked(note) : '') +
+            (summary ? ' Last time: ' + ATV.escMasked(ATV.tidy(summary)) : '') +
             ' Attach the corrected file and run it again.';
           $('#resubmit-note').hidden = false;
         })

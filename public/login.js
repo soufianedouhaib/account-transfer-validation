@@ -8,7 +8,7 @@
 
   var $ = ATV.$;
   var esc = ATV.esc;
-  var mode = document.body.getAttribute('data-mode') === 'reviewer' ? 'reviewer' : 'advisor';
+  var mode = document.body.getAttribute('data-mode') === 'admin' ? 'admin' : 'advisor';
 
   function showError(message, redirect) {
     var box = $('#signin-error');

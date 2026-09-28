@@ -1,12 +1,17 @@
 /* Report: a ribbon of figures that stays put, and five chapters that slide in
    beside it.
 
-   Two series throughout, approved and rejected, so two categorical hues: the
+   Two series throughout, cleared and held back, so two categorical hues: the
    brand blue and an orange. Never green against red, which is the pair most
    people with colour vision deficiency cannot separate, on a page that is
    about money. The pair was checked with the validator in both modes. Colour
    is never the only channel: every series is named in the legend, every bar
-   carries its figure, and every chapter has a table or a list behind it. */
+   carries its figure, and every chapter has a table behind it.
+
+   Every figure here is the workflow's own verdict. Nobody approves a packet
+   afterwards, so there is no decided/undecided split to report: a finished
+   run was either put straight through as in good order or held back as not
+   in good order. */
 
 (function () {
   'use strict';
@@ -24,6 +29,65 @@
     return node;
   }
 
+  /* ---------------------------- counting up ----------------------------- */
+
+  /* A figure that counts up says "this number just changed" without a label
+     saying so, which is the whole point of putting the ribbon above the
+     chapters. It is decoration, so anyone who has asked their system to stop
+     moving things gets the final value written straight in. */
+  var REDUCED =
+    window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function easeOut(t) {
+    return 1 - Math.pow(1 - t, 3);
+  }
+
+  /* The handle lives on the node so changing the period mid count cancels the
+     run in flight instead of leaving two of them fighting over one element. */
+  function countTo(node, to, format, ms) {
+    if (!node) return;
+    if (node._anim) cancelAnimationFrame(node._anim);
+    if (typeof to !== 'number' || !isFinite(to)) {
+      node._value = null;
+      node.textContent = format(to);
+      return;
+    }
+    var from = typeof node._value === 'number' ? node._value : 0;
+    node._value = to;
+    if (REDUCED || from === to) {
+      node.textContent = format(to);
+      return;
+    }
+    var start = performance.now();
+    var span = ms || 720;
+    var step = function (now) {
+      var t = Math.min((now - start) / span, 1);
+      node.textContent = format(from + (to - from) * easeOut(t));
+      node._anim = t < 1 ? requestAnimationFrame(step) : null;
+    };
+    node._anim = requestAnimationFrame(step);
+  }
+
+  /* The same easing for something that is not text: the ring's sweep. */
+  function tweenTo(node, to, apply, ms) {
+    if (!node) return;
+    if (node._anim) cancelAnimationFrame(node._anim);
+    var from = typeof node._value === 'number' ? node._value : 0;
+    node._value = to;
+    if (REDUCED || from === to) {
+      apply(to);
+      return;
+    }
+    var start = performance.now();
+    var span = ms || 720;
+    var step = function (now) {
+      var t = Math.min((now - start) / span, 1);
+      apply(from + (to - from) * easeOut(t));
+      node._anim = t < 1 ? requestAnimationFrame(step) : null;
+    };
+    node._anim = requestAnimationFrame(step);
+  }
+
   function fill(root, slot) {
     return root.querySelector('[data-slot="' + slot + '"]');
   }
@@ -39,8 +103,8 @@
   function legendInto(host) {
     if (!host) return;
     host.innerHTML =
-      '<span class="legend-item"><span class="swatch swatch-approved"></span>Approved</span>' +
-      '<span class="legend-item"><span class="swatch swatch-rejected"></span>Rejected</span>';
+      '<span class="legend-item"><span class="swatch swatch-cleared"></span>Cleared, in good order</span>' +
+      '<span class="legend-item"><span class="swatch swatch-blocked"></span>Held back, not in good order</span>';
   }
 
   function currentRange() {
@@ -62,21 +126,38 @@
   function renderRibbon(report) {
     var t = report.totals || {};
     var c = report.currency;
-    var decided = (t.approved.amount || 0) + (t.rejected.amount || 0);
-    var share = decided > 0 ? Math.round((t.approved.amount / decided) * 100) : null;
+    var st = report.straightThrough || {};
 
-    $('#k-approved').textContent = money(t.approved.amount, c);
-    $('#k-approved-sub').textContent = plural(t.approved.count, 'run');
-    $('#k-rejected').textContent = money(t.rejected.amount, c);
-    $('#k-rejected-sub').textContent = plural(t.rejected.count, 'run');
-    $('#k-rate').textContent = share === null ? '—' : share + '%';
-    $('#k-count').textContent = String(report.runs || 0);
-    $('#k-count-sub').textContent = t.pending.count
-      ? plural(t.pending.count, 'still waiting', 'still waiting')
-      : 'all decided';
+    var asMoney = function (v) {
+      return money(Math.round(v), c);
+    };
+
+    /* The headline is the share of finished runs the workflow put through
+       with nothing to chase. It is a share of runs, not of money: one large
+       packet held back should not read as a collapse in performance. */
+    countTo($('#k-rate'), typeof st.rate === 'number' ? st.rate * 100 : NaN, function (v) {
+      return typeof v === 'number' && isFinite(v) ? Math.round(v) + '%' : '—';
+    });
+    $('#k-rate-sub').textContent = st.finished
+      ? st.cleared + ' of ' + plural(st.finished, 'finished run')
+      : 'no finished runs';
+
+    countTo($('#k-cleared'), t.cleared ? t.cleared.amount || 0 : 0, asMoney);
+    $('#k-cleared-sub').textContent = plural(t.cleared ? t.cleared.count : 0, 'run');
+    countTo($('#k-blocked'), t.blocked ? t.blocked.amount || 0 : 0, asMoney);
+    $('#k-blocked-sub').textContent = plural(t.blocked ? t.blocked.count : 0, 'run');
+
+    countTo($('#k-count'), report.runs || 0, function (v) {
+      return String(Math.round(v));
+    });
+    $('#k-count-sub').textContent = st.unfinished
+      ? plural(st.unfinished, 'did not finish', 'did not finish')
+      : 'all finished';
 
     var rt = report.runtime || {};
-    $('#k-speed').textContent = typeof rt.averageMs === 'number' ? ATV.duration(rt.averageMs) : '—';
+    countTo($('#k-speed'), typeof rt.averageMs === 'number' ? rt.averageMs : NaN, function (v) {
+      return typeof v === 'number' && isFinite(v) ? ATV.duration(Math.round(v)) : '—';
+    });
     $('#k-speed-sub').textContent = rt.runs ? plural(rt.runs, 'run') + ' timed' : 'no timed runs';
   }
 
@@ -86,38 +167,78 @@
     var root = $('#tpl-headline').content.cloneNode(true);
     var t = report.totals || {};
     var c = report.currency;
-    var decided = (t.approved.amount || 0) + (t.rejected.amount || 0);
-    var share = decided > 0 ? t.approved.amount / decided : null;
+    var st = report.straightThrough || {};
+    var share = typeof st.rate === 'number' ? st.rate : null;
+    var decided = (t.cleared.amount || 0) + (t.blocked.amount || 0);
+
+    var asMoney = function (v) {
+      return money(Math.round(v), c);
+    };
 
     fill(root, 'period').textContent = describeRange(report.range || {});
-    fill(root, 'approved').textContent = money(t.approved.amount, c);
-    fill(root, 'approved-sub').textContent = 'approved across ' + plural(t.approved.count, 'run');
-    fill(root, 'rejected').textContent = money(t.rejected.amount, c);
-    fill(root, 'rejected-sub').textContent = 'rejected across ' + plural(t.rejected.count, 'run');
+    /* The panel is built fresh every time the chapter is opened, so these
+       start at zero and run up: opening the chapter is what plays them. */
+    countTo(fill(root, 'cleared'), t.cleared.amount || 0, asMoney, 840);
+    fill(root, 'cleared-sub').textContent =
+      'cleared in good order across ' + plural(t.cleared.count, 'run');
+    countTo(fill(root, 'blocked'), t.blocked.amount || 0, asMoney, 840);
+    fill(root, 'blocked-sub').textContent =
+      'held back as not in good order across ' + plural(t.blocked.count, 'run');
 
     /* The ring is one proportion, so it is a figure rather than a chart: the
        number is written inside it and the caption says what it is of. */
     var arc = fill(root, 'arc');
     var circumference = 2 * Math.PI * 48;
-    var swept = share === null ? 0 : share * circumference;
-    arc.setAttribute('stroke-dasharray', swept + ' ' + (circumference - swept));
-    fill(root, 'pct').textContent = share === null ? '—' : Math.round(share * 100) + '%';
+    /* A round cap on a zero length arc still paints a dot, which reads as a
+       sliver of success where there is none. Nothing finished, nothing drawn. */
+    arc.style.display = share === null ? 'none' : '';
+    tweenTo(
+      arc,
+      share === null ? 0 : share,
+      function (v) {
+        var swept = v * circumference;
+        arc.setAttribute('stroke-dasharray', swept + ' ' + (circumference - swept));
+      },
+      840
+    );
+    countTo(
+      fill(root, 'pct'),
+      share === null ? NaN : share * 100,
+      function (v) {
+        return typeof v === 'number' && isFinite(v) ? Math.round(v) + '%' : '—';
+      },
+      840
+    );
     fill(root, 'ring-label').setAttribute(
       'aria-label',
       share === null
-        ? 'No decided value in this period'
-        : Math.round(share * 100) + ' per cent of decided value was approved'
+        ? 'No run finished in this period'
+        : Math.round(share * 100) + ' per cent of finished runs went straight through'
     );
     fill(root, 'ring-note').textContent =
       share === null
-        ? 'Nothing has been decided in this period yet.'
-        : money(t.approved.amount, c) + ' approved of ' + money(decided, c) + ' decided';
+        ? 'No run has finished in this period yet.'
+        : st.cleared + ' of ' + plural(st.finished, 'finished run') + ' needed no fixing';
 
     var facts = fill(root, 'facts');
     [
-      { k: 'Sent back for a fix', v: plural(t.returned.count, 'run'), sub: money(t.returned.amount, c) },
-      { k: 'Waiting for a decision', v: plural(t.pending.count, 'run'), sub: money(t.pending.amount, c) },
-      { k: 'Did not finish', v: plural(t.unfinished.count, 'run'), sub: 'no decision was possible' }
+      {
+        k: 'Value the workflow saw',
+        v: money(decided, c),
+        sub: plural(st.finished, 'finished run')
+      },
+      {
+        k: 'Issues raised',
+        v: String((report.issues && report.issues.total) || 0),
+        sub: t.blocked.count
+          ? 'across ' + plural(t.blocked.count, 'packet') + ' held back'
+          : 'nothing was held back'
+      },
+      {
+        k: 'Did not finish',
+        v: plural(st.unfinished || 0, 'run'),
+        sub: 'no verdict was produced'
+      }
     ].forEach(function (fact) {
       var box = el('div', 'fact');
       box.innerHTML =
@@ -146,7 +267,7 @@
 
     var peak = 0;
     months.forEach(function (m) {
-      peak = Math.max(peak, m.approved.amount, m.rejected.amount);
+      peak = Math.max(peak, m.cleared.amount, m.blocked.amount);
     });
     if (peak <= 0) peak = 1;
     var step = Math.pow(10, Math.floor(Math.log10(peak)));
@@ -174,7 +295,7 @@
 
     var tallest = months.reduce(
       function (best, m, i) {
-        var v = Math.max(m.approved.amount, m.rejected.amount);
+        var v = Math.max(m.cleared.amount, m.blocked.amount);
         return v > best.v ? { v: v, i: i } : best;
       },
       { v: -1, i: -1 }
@@ -200,8 +321,8 @@
           );
         };
         return (
-          one('approved', centre - barW - gap / 2) +
-          one('rejected', centre + gap / 2) +
+          one('cleared', centre - barW - gap / 2) +
+          one('blocked', centre + gap / 2) +
           '<text class="axis-text" x="' + centre + '" y="' + (H - 16) + '" text-anchor="middle">' +
           esc(ATV.monthLabel(m.key)) +
           '</text>'
@@ -211,7 +332,7 @@
 
     return (
       '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" ' +
-      'aria-label="Approved against rejected amounts by month">' +
+      'aria-label="Value cleared against value held back, by month">' +
       grid +
       '<line class="axis-line" x1="' + padL + '" y1="' + (padT + plotH) + '" x2="' + (W - padR) +
       '" y2="' + (padT + plotH) + '"/>' +
@@ -224,7 +345,7 @@
     var root = $('#tpl-months').content.cloneNode(true);
     var months = report.months || [];
     legendInto(fill(root, 'legend'));
-    fill(root, 'title').textContent = 'Month by month, by the month it was submitted';
+    fill(root, 'title').textContent = 'Value cleared against value held back, by month submitted';
 
     if (!months.length) {
       fill(root, 'empty').hidden = false;
@@ -241,17 +362,15 @@
       var tr = el('tr');
       tr.innerHTML =
         '<td>' + esc(ATV.monthLabel(m.key)) + '</td>' +
-        '<td class="num">' + esc(money(m.approved.amount, report.currency)) + '</td>' +
-        '<td class="num">' + esc(money(m.rejected.amount, report.currency)) + '</td>' +
-        '<td class="num">' +
-        (m.approved.count + m.rejected.count + m.returned.count + m.pending.count + m.unfinished.count) +
-        '</td>';
+        '<td class="num">' + esc(money(m.cleared.amount, report.currency)) + '</td>' +
+        '<td class="num">' + esc(money(m.blocked.amount, report.currency)) + '</td>' +
+        '<td class="num">' + (m.cleared.count + m.blocked.count + m.unfinished.count) + '</td>';
       body.appendChild(tr);
     });
     return root;
   }
 
-  /* Ranked rows: one bar per name, approved and rejected side by side in the
+  /* Ranked rows: one bar per name, cleared and held back side by side in the
      same row, each row labelled with its total. Horizontal because the labels
      are names, and a name reads along a row rather than turned on its side. */
   function panelRank(report, rows, eyebrow, title, emptyNote) {
@@ -276,59 +395,21 @@
     var host = fill(root, 'rank');
     shown.slice(0, 8).forEach(function (r) {
       var row = el('div', 'rank-row');
-      var approvedPct = (r.approved / peak) * 100;
-      var rejectedPct = (r.rejected / peak) * 100;
+      var clearedPct = (r.cleared / peak) * 100;
+      var blockedPct = (r.blocked / peak) * 100;
+      /* Widths start at nothing and are set once the row is on screen, so the
+         bars grow in with the same easing as the figures above them. */
       row.innerHTML =
         '<span class="rank-name" title="' + esc(r.label) + '">' + esc(r.label) + '</span>' +
         '<span class="rank-track">' +
-        '<span class="rank-bar rank-approved" style="width:' + approvedPct.toFixed(2) + '%"></span>' +
-        '<span class="rank-bar rank-rejected" style="width:' + rejectedPct.toFixed(2) + '%"></span>' +
+        '<span class="rank-bar rank-cleared" data-w="' + clearedPct.toFixed(2) + '"></span>' +
+        '<span class="rank-bar rank-blocked" data-w="' + blockedPct.toFixed(2) + '"></span>' +
         '</span>' +
         '<span class="rank-value">' + esc(money(r.total, report.currency)) + '</span>' +
         '<span class="rank-runs">' + plural(r.runs, 'run') +
-        (r.undecided ? ', ' + r.undecided + ' undecided' : '') +
+        (r.unfinished ? ', ' + r.unfinished + ' unfinished' : '') +
         '</span>';
       host.appendChild(row);
-    });
-    return root;
-  }
-
-  function panelWaiting(report) {
-    var root = $('#tpl-waiting').content.cloneNode(true);
-    var waiting = report.waiting || [];
-    fill(root, 'title').textContent = waiting.length
-      ? plural(waiting.length, 'run') + ' waiting for a decision'
-      : 'Nothing is waiting';
-
-    if (!waiting.length) {
-      fill(root, 'empty').hidden = false;
-      return root;
-    }
-
-    var host = fill(root, 'list');
-    waiting.forEach(function (row) {
-      var item = el('a', 'waiting-row');
-      item.href = '/case.html?id=' + encodeURIComponent(row.caseId);
-      var age = row.waitingDays === null
-        ? ''
-        : row.waitingDays === 0
-          ? 'today'
-          : plural(row.waitingDays, 'day') + ' ago';
-      item.innerHTML =
-        '<span class="waiting-main">' +
-        '<b>' + esc(row.title || row.clientName || 'Case ' + row.caseId) + '</b>' +
-        '<span class="waiting-sub">' +
-        esc([row.clientName, row.contraFirm].filter(Boolean).join(' · ')) +
-        '</span></span>' +
-        '<span class="waiting-meta">' +
-        (row.verdict ? ATV.verdictPill(row.verdict) : '') +
-        '</span>' +
-        '<span class="waiting-value">' + esc(row.submittedValue || '') + '</span>' +
-        '<span class="waiting-age">' +
-        esc(row.submittedByName || '') +
-        (age ? '<span class="waiting-when">submitted ' + esc(age) + '</span>' : '') +
-        '</span>';
-      host.appendChild(item);
     });
     return root;
   }
@@ -358,8 +439,8 @@
           report,
           report.people,
           'By employee',
-          'Decided value per employee',
-          'Nobody has had a run decided in this period.'
+          'Value put through per employee',
+          'Nobody has had a run finish in this period.'
         );
       }
     },
@@ -371,16 +452,9 @@
           report,
           report.firms,
           'By delivering firm',
-          'Decided value per delivering firm',
+          'Value put through per delivering firm',
           'No delivering firm was read from the packets in this period.'
         );
-      }
-    },
-    {
-      title: 'Still waiting',
-      blurb: 'Runs with no decision',
-      build: function (report) {
-        return panelWaiting(report);
       }
     }
   ];
@@ -418,6 +492,23 @@
       chartHost.innerHTML = monthsChart(current, Math.round(chartHost.clientWidth));
       wireTooltip(host);
     }
+
+    growBars(host);
+  }
+
+  /* Ranked bars grow from nothing on the frame after they are placed. Setting
+     the width in the same frame the row is inserted gives the browser nothing
+     to transition from, so it is deliberately one frame later. */
+  function growBars(host) {
+    var bars = ATV.$$('.rank-bar[data-w]', host);
+    if (!bars.length) return;
+    var paint = function () {
+      bars.forEach(function (bar) {
+        bar.style.width = bar.getAttribute('data-w') + '%';
+      });
+    };
+    if (REDUCED) paint();
+    else requestAnimationFrame(function () { requestAnimationFrame(paint); });
   }
 
   /* ------------------------------ the hover ----------------------------- */
@@ -434,7 +525,7 @@
       hit.addEventListener('mouseenter', function (event) {
         tip.innerHTML =
           '<b>' + esc(ATV.monthLabel(hit.getAttribute('data-month'))) + '</b>' +
-          '<span>' + esc(hit.getAttribute('data-kind') === 'approved' ? 'Approved' : 'Rejected') + '</span>' +
+          '<span>' + esc(hit.getAttribute('data-kind') === 'cleared' ? 'Cleared' : 'Held back') + '</span>' +
           '<span>' + esc(hit.getAttribute('data-amount')) + '</span>' +
           '<span>' + plural(Number(hit.getAttribute('data-count')), 'run') + '</span>';
         tip.hidden = false;
@@ -467,6 +558,75 @@
     }
   }
 
+  /* The default is the dirham total across every currency, because that is
+     the one number a manager is after. Pinning the report to one currency
+     stays available beside it, and then the printed amounts are left alone. */
+  function renderCurrency(report) {
+    var select = $('#filter-currency');
+    var list = report.currencies || [];
+    if (!list.length) {
+      select.hidden = true;
+      return;
+    }
+    var options = ['<option value="">Total in AED</option>'].concat(
+      list.map(function (c) {
+        var label = c === 'unlabelled' ? 'No currency' : esc(c) + ' only';
+        return '<option value="' + esc(c) + '">' + label + '</option>';
+      })
+    );
+    var markup = options.join('');
+    if (select.innerHTML !== markup) select.innerHTML = markup;
+    select.value = report.converted ? '' : report.currency;
+    select.hidden = false;
+  }
+
+  /* A converted total is only honest if the rate is on the page, so the rate
+     used for each currency present, and the day it was taken, are printed
+     under the ribbon along with anything the total could not take in. */
+  function renderFxNote(report) {
+    var note = $('#fx-note');
+    var info = report.fx;
+    if (!report.converted || !info) {
+      note.hidden = true;
+      note.textContent = '';
+      return;
+    }
+
+    /* The server names the rate it applied to each currency it found, so the
+       page never has to guess that "$" means dollars. */
+    var used = (info.used || []).filter(function (r) {
+      return r.code !== 'AED';
+    });
+
+    var parts = [];
+    if (used.length) {
+      parts.push(
+        'Converted to AED at ' +
+          used
+            .map(function (r) {
+              return '1 ' + r.code + ' = ' + r.rate + ' AED';
+            })
+            .join(', ') +
+          (info.asOf ? ', rates of ' + info.asOf : '')
+      );
+    } else {
+      parts.push('Every amount in this period is already in AED.');
+    }
+    if (info.skippedRuns) {
+      parts.push(
+        plural(info.skippedRuns, 'run') +
+          ' left out of the total: no rate for ' +
+          info.skippedCurrencies
+            .map(function (c) {
+              return c === 'unlabelled' ? 'amounts with no currency' : c;
+            })
+            .join(', ')
+      );
+    }
+    note.textContent = parts.join(' · ');
+    note.hidden = false;
+  }
+
   function load() {
     var range = currentRange();
     var query = ATV.rangeQuery(range);
@@ -488,20 +648,8 @@
         renderChapterList();
         renderChapter();
 
-        var select = $('#filter-currency');
-        if (report.currencies && report.currencies.length > 1) {
-          if (select.options.length !== report.currencies.length) {
-            select.innerHTML = report.currencies
-              .map(function (c) {
-                return '<option value="' + esc(c) + '">' + esc(c) + ' amounts</option>';
-              })
-              .join('');
-            select.value = report.currency;
-          }
-          select.hidden = false;
-        } else {
-          select.hidden = true;
-        }
+        renderCurrency(report);
+        renderFxNote(report);
       })
       .catch(function (err) {
         if (ATV.onAuthLoss(err)) return;
@@ -541,6 +689,6 @@
         }, 120);
       });
     },
-    { need: 'reviewer' }
+    { need: 'admin' }
   );
 })();
