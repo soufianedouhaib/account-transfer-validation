@@ -921,6 +921,84 @@ app.get('/api/export.csv', auth.requireReviewer, async function (req, res) {
  * rejected. Amounts are grouped by the currency they were printed in, because
  * adding dirhams to dollars would be a lie.
  */
+/**
+ * Rolls the rows up by whatever the picker names: the person who submitted
+ * them, the delivering firm, anything with a key and a label.
+ *
+ * Only decided runs carry an amount here. A run still waiting has a value but
+ * no verdict, and putting it in a bar beside approved and rejected money would
+ * be inventing an outcome for it, so it is counted apart and reported as such.
+ *
+ * Amounts stay inside the chosen currency. A row printed in dirhams is counted
+ * in its count but not added to a dollar total.
+ */
+function groupBy(rows, currency, pick) {
+  const buckets = {};
+  rows.forEach(function (row) {
+    const picked = pick(row) || {};
+    const key = picked.key;
+    if (!key) return;
+    if (!buckets[key]) {
+      buckets[key] = {
+        key: key,
+        label: picked.label || key,
+        approved: 0,
+        rejected: 0,
+        runs: 0,
+        undecided: 0
+      };
+    }
+    const bucket = buckets[key];
+    bucket.runs += 1;
+
+    const decided = row.status === 'COMPLETED' && (row.reviewState === 'approved' || row.reviewState === 'rejected');
+    if (!decided) {
+      bucket.undecided += 1;
+      return;
+    }
+    const sameCurrency = !currency || (row.valueCurrency || 'unlabelled') === currency;
+    if (typeof row.valueAmount !== 'number' || !sameCurrency) return;
+    bucket[row.reviewState] += row.valueAmount;
+  });
+
+  return Object.keys(buckets)
+    .map(function (k) {
+      const b = buckets[k];
+      b.total = b.approved + b.rejected;
+      return b;
+    })
+    .sort(function (a, b) {
+      return b.total - a.total || b.runs - a.runs;
+    });
+}
+
+/** Finished runs with nobody's decision on them yet, oldest first. */
+function waitingFrom(rows) {
+  const now = Date.now();
+  return rows
+    .filter(function (row) {
+      return row.status === 'COMPLETED' && (row.reviewState || 'pending') === 'pending';
+    })
+    .map(function (row) {
+      const at = row.createdAt ? Date.parse(row.createdAt) : NaN;
+      return {
+        caseId: row.caseId,
+        title: row.title,
+        clientName: row.clientName,
+        contraFirm: row.contraFirm,
+        submittedByName: row.submittedByName || row.submittedBy,
+        submittedValue: row.submittedValue,
+        verdict: row.verdict,
+        totalIssues: row.totalIssues,
+        createdAt: row.createdAt,
+        waitingDays: isNaN(at) ? null : Math.max(0, Math.floor((now - at) / 86400000))
+      };
+    })
+    .sort(function (a, b) {
+      return String(a.createdAt || '').localeCompare(String(b.createdAt || ''));
+    });
+}
+
 app.get('/api/report', auth.requireReviewer, async function (req, res) {
   if (!store.configured) {
     return res.json({ configured: false, months: [], currencies: [], note: 'Reporting needs run history.' });
@@ -1027,6 +1105,13 @@ app.get('/api/report', auth.requireReviewer, async function (req, res) {
       months: months,
       totals: totals,
       runtime: runtime,
+      people: groupBy(rows, currency, function (row) {
+        return { key: row.submittedBy, label: row.submittedByName || row.submittedBy };
+      }),
+      firms: groupBy(rows, currency, function (row) {
+        return { key: row.contraFirm, label: row.contraFirm };
+      }),
+      waiting: waitingFrom(rows),
       runs: rows.length
     });
   } catch (err) {
