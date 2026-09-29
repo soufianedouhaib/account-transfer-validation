@@ -508,6 +508,17 @@ body.side-open .label {
   margin-bottom: 22px;
 }
 
+/* The wordmark above a page title. Sized by height so the 6:1 lockup keeps
+   its proportions, and inverted in dark mode by the same rule the sign in
+   pages use. */
+.page-logo {
+  height: 24px;
+  width: auto;
+  display: block;
+  margin-bottom: 14px;
+  filter: var(--logo-filter);
+}
+
 .page-head p {
   color: var(--muted);
   margin-top: 7px;
