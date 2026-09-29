@@ -65,9 +65,13 @@
         $('#admin-only').hidden = false;
       }
 
+      /* Everything below is the administrator's view of the deployment. An
+         employee's settings page is their own preferences and how to reach
+         support, so it never asks for any of it. */
+      if (me.role !== 'admin') return;
+
       ATV.fetchJson('/api/settings')
         .then(function (settings) {
-          if (me.role !== 'admin') return;
           rows('#workflow-kv', [
             ['Workflow id', '<span class="mono">' + esc(settings.workflow.id) + '</span>'],
             ['API base', '<span class="mono">' + esc(settings.workflow.baseUrl) + '</span>'],
@@ -133,6 +137,6 @@
             '</div></dd>';
         });
     },
-    { need: 'reviewer' }
+    { need: 'user' }
   );
 })();

@@ -160,17 +160,32 @@
 
   function issuesHtml(issues) {
     if (!issues || !issues.length) return '';
+
+    /* The workflow does not always attach a reason code: it did on NIGO-09,
+       it did not on the account master check. A column of blanks reads as a
+       bug in the console, so the column is only drawn when something in this
+       case actually carries one. */
+    var hasCodes = issues.some(function (issue) {
+      return Boolean(issue.reason_code);
+    });
+
     var rows = issues
       .map(function (issue) {
+        var label = ATV.tidy(issue.label || 'Issue');
+        var detail = ATV.tidy(issue.detail || '');
+        /* Some issues repeat the label word for word as the detail. Printing
+           it twice reads as a rendering fault, so the second line is dropped
+           when it says nothing the first did not. */
+        var sameText = detail && detail.replace(/\s+/g, ' ').trim().toLowerCase() ===
+          label.replace(/\s+/g, ' ').trim().toLowerCase();
         return (
           '<tr>' +
           '<td data-label="Issue"><div>' +
-          '<div>' +
-          esc(issue.label || 'Issue') +
-          '</div>' +
-          '<div class="card-sub" style="margin: 2px 0 0">' +
-          ATV.escMasked(issue.detail || '') +
-          '</div></div></td>' +
+          '<div>' + esc(label) + '</div>' +
+          (detail && !sameText
+            ? '<div class="card-sub" style="margin: 2px 0 0">' + ATV.escMasked(detail) + '</div>'
+            : '') +
+          '</div></td>' +
           '<td data-label="Field">' +
           esc(ATV.fieldLabel(issue.field)) +
           '</td>' +
@@ -183,60 +198,27 @@
           '<td class="num" data-label="Confidence">' +
           (typeof issue.confidence === 'number' ? issue.confidence + '%' : '') +
           '</td>' +
-          '<td class="nowrap" data-label="Code"><span class="mono">' +
-          esc(issue.reason_code || '') +
-          '</span></td>' +
+          (hasCodes
+            ? '<td class="nowrap" data-label="Code"><span class="mono">' +
+              esc(issue.reason_code || '') +
+              '</span></td>'
+            : '') +
           '</tr>'
         );
       })
       .join('');
+
     return (
       '<section class="card">' +
       '<div class="card-head"><h2>Flagged issues</h2><span class="pill pill-bad">' +
       issues.length +
       ' to resolve</span></div>' +
       '<div class="table-wrap"><table class="data-table"><thead><tr>' +
-      '<th>Issue</th><th>Field</th><th>Check</th><th>Severity</th><th class="num">Confidence</th><th>Code</th>' +
+      '<th>Issue</th><th>Field</th><th>Check</th><th>Severity</th><th class="num">Confidence</th>' +
+      (hasCodes ? '<th>Code</th>' : '') +
       '</tr></thead><tbody>' +
       rows +
       '</tbody></table></div>' +
-      '</section>'
-    );
-  }
-
-  /* The workflow assembles this package only when it finds the packet in good
-     order, and its own flag says whether it considers it sendable. */
-  function packageGatePill(pkg) {
-    if (pkg && pkg.ready_to_send === false) {
-      return '<span class="pill pill-warn"><span class="glyph">▲</span>Not ready to send</span>';
-    }
-    return '<span class="pill pill-ok"><span class="glyph">✓</span>Ready to send</span>';
-  }
-
-  function packageHtml(pkg) {
-    if (!pkg) return '';
-    var order = [
-      'client_name',
-      'registration',
-      'account_type',
-      'contra_firm',
-      'contra_account_number',
-      'nana',
-      'transfer_type',
-      'scope',
-      'value',
-      'form_id'
-    ];
-    var copy = {};
-    order.forEach(function (k) {
-      if (Object.prototype.hasOwnProperty.call(pkg, k)) copy[k] = pkg[k];
-    });
-    return (
-      '<section class="card">' +
-      '<div class="card-head"><h2>What would be sent to the contra firm</h2>' +
-      packageGatePill(pkg) +
-      '</div>' +
-      pairs(copy, order, null, 'package') +
       '</section>'
     );
   }

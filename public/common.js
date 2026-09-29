@@ -113,14 +113,16 @@
        run list above it: an employee's own work, or all of it for an
        administrator. */
     links.push({ href: '/report.html', label: 'Report', icon: 'report', match: ['/report.html'] });
-    if (me.isAdmin) {
-      links.push({
-        href: '/settings.html',
-        label: 'Settings',
-        icon: 'settings',
-        match: ['/settings.html']
-      });
-    }
+    /* Settings carries a personal preference, the theme, so everyone has it.
+       What it shows differs: the roster and the deployment internals are for
+       the administrator, and the page asks the server for them rather than
+       deciding on its own. */
+    links.push({
+      href: '/settings.html',
+      label: 'Settings',
+      icon: 'settings',
+      match: ['/settings.html']
+    });
     return links;
   }
 
@@ -263,10 +265,15 @@
       'aria-expanded="false" title="Keep the menu open" aria-label="Keep the menu open">' +
       icon('chevron') +
       '</button>' +
-      '<a class="brand-lockup" href="/" title="Account Transfer Validation">' +
+      '</div>' +
+      /* The Applied AI mark, not the wordmark: it is square, so it survives
+         the rail being a 68px strip and is therefore on every screen rather
+         than only when the rail happens to be open. The product name sits
+         beside it and is clipped away with everything else. */
+      '<a class="brand-lockup" href="/" title="Applied AI, Account Transfer Validation">' +
+      '<img class="brand-mark" src="/brand-mark.png" alt="Applied AI" width="26" height="26" />' +
       '<span class="label">Account Transfer Validation</span>' +
       '</a>' +
-      '</div>' +
       '<nav class="side-nav">' +
       links +
       '</nav>' +

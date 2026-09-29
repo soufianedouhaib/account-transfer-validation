@@ -288,9 +288,23 @@ body.side-open.side-pinned .side-scrim {
 .brand-lockup {
   display: flex;
   align-items: center;
+  gap: 10px;
   min-width: 0;
   text-decoration: none;
   color: inherit;
+  padding: 0 4px 10px;
+}
+
+/* Square, so it stays whole in the 68px strip and is on every screen rather
+   than only while the rail is open. The wordmark would be clipped to its
+   first letter at this width, which is why the mark is used here and the
+   wordmark is left to the sign in pages. */
+.brand-mark {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  display: block;
+  filter: var(--logo-filter);
 }
 
 .brand-lockup .label {
@@ -324,9 +338,12 @@ body.side-open .side-toggle {
 }
 
 .side-top {
+  padding-bottom: 0;
+}
+
+.brand-lockup {
   border-bottom: 1px solid var(--line);
   margin-bottom: 10px;
-  padding-bottom: 12px;
 }
 
 .side-nav {
@@ -441,6 +458,7 @@ body.side-open .side-toggle {
    nothing here changes size. Only the window onto it does, and the labels fade
    through. */
 .side-top,
+.brand-lockup,
 .side-nav a,
 .side-support,
 .side-out,
