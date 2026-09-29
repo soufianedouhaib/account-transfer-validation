@@ -159,7 +159,11 @@
   }
 
   function issuesHtml(issues) {
-    if (!issues || !issues.length) return '';
+    /* Anything that is not a list of issues is treated as no issues. The
+       shape comes from a workflow this console does not control, and a
+       surprise here should cost the reader this one section rather than the
+       whole page. */
+    if (!Array.isArray(issues) || !issues.length) return '';
 
     /* The workflow does not always attach a reason code: it did on NIGO-09,
        it did not on the account master check. A column of blanks reads as a
@@ -219,6 +223,43 @@
       '</tr></thead><tbody>' +
       rows +
       '</tbody></table></div>' +
+      '</section>'
+    );
+  }
+
+  /* The workflow assembles this package only when it finds the packet in good
+     order, and its own flag says whether it considers it sendable. */
+  function packageGatePill(pkg) {
+    if (pkg && pkg.ready_to_send === false) {
+      return '<span class="pill pill-warn"><span class="glyph">▲</span>Not ready to send</span>';
+    }
+    return '<span class="pill pill-ok"><span class="glyph">✓</span>Ready to send</span>';
+  }
+
+  function packageHtml(pkg) {
+    if (!pkg) return '';
+    var order = [
+      'client_name',
+      'registration',
+      'account_type',
+      'contra_firm',
+      'contra_account_number',
+      'nana',
+      'transfer_type',
+      'scope',
+      'value',
+      'form_id'
+    ];
+    var copy = {};
+    order.forEach(function (k) {
+      if (Object.prototype.hasOwnProperty.call(pkg, k)) copy[k] = pkg[k];
+    });
+    return (
+      '<section class="card">' +
+      '<div class="card-head"><h2>What would be sent to the contra firm</h2>' +
+      packageGatePill(pkg) +
+      '</div>' +
+      pairs(copy, order, null, 'package') +
       '</section>'
     );
   }
@@ -485,8 +526,16 @@
           timer = setTimeout(poll, POLL_MS);
           return;
         }
-        if (payload.status === 'COMPLETED' && payload.result) renderResult(payload);
-        else renderFailure(payload);
+        /* Drawing the result is kept apart from fetching it. A payload this
+           page cannot render is a fault in the console, not a missing case,
+           and reporting it as "not found" sends somebody looking for a run
+           that is sitting right there. */
+        try {
+          if (payload.status === 'COMPLETED' && payload.result) renderResult(payload);
+          else renderFailure(payload);
+        } catch (err) {
+          renderUnreadable(payload, err);
+        }
       })
       .catch(function (err) {
         if (ATV.onAuthLoss(err)) return;
@@ -495,15 +544,60 @@
         $('#failed').hidden = false;
         $('#actions').hidden = false;
         $('#copy-json').hidden = true;
-        $('#case-title').textContent = 'Validation not found';
-        $('#failed').innerHTML =
-          '<div class="card"><div class="empty"><strong>This validation could not be found</strong>' +
-          'It may belong to another colleague, or the link may be incomplete. ' +
-          'Starting a new validation is the quickest way forward.' +
-          '</div></div>' +
-          supportCardHtml({ status: 'not found' });
+
+        /* Only a 404 means the case is not there. Anything else is the
+           console failing to reach its own server, and saying "not found"
+           would be a guess dressed up as an answer. */
+        if (err.status === 404) {
+          $('#case-title').textContent = 'Validation not found';
+          $('#failed').innerHTML =
+            '<div class="card"><div class="empty"><strong>This validation could not be found</strong>' +
+            'It may belong to another colleague, or the link may be incomplete. ' +
+            'Starting a new validation is the quickest way forward.' +
+            '</div></div>' +
+            supportCardHtml({ status: 'not found' });
+        } else {
+          $('#failed').innerHTML =
+            '<div class="card"><div class="empty"><strong>This run could not be read</strong>' +
+            'The console could not reach the server for this case. The run itself is unaffected, ' +
+            'so reloading the page is usually enough.' +
+            '</div><p class="notice notice-warn" style="margin: 0 14px 14px">' +
+            '<span class="glyph">!</span>' +
+            esc(err.message || 'Unknown error') +
+            '</p></div>' +
+            supportCardHtml({ status: 'could not be read' });
+        }
         if (window.console && console.warn) console.warn('Case lookup failed: ' + err.message);
       });
+  }
+
+  /* The run finished and the server handed it over; this console could not
+     draw it. Everything known is kept on screen, the fault is named, and an
+     administrator gets the payload that caused it. */
+  function renderUnreadable(payload, err) {
+    $('#running').hidden = true;
+    setWaiting(false);
+    $('#result').hidden = true;
+    $('#failed').hidden = false;
+    $('#actions').hidden = false;
+    $('#copy-json').hidden = true;
+    $('#failed').innerHTML =
+      '<div class="card"><div class="empty"><strong>This run finished, but the console could not display it</strong>' +
+      'The validation itself is fine and its result is stored. This is a fault in this page, ' +
+      'not in the run, so the workflow does not need running again.' +
+      '</div><p class="notice notice-warn" style="margin: 0 14px 14px">' +
+      '<span class="glyph">!</span>' +
+      esc((err && err.message) || 'Unknown rendering error') +
+      '</p></div>' +
+      (me && me.isAdmin
+        ? '<details class="raw"><summary>Raw workflow output</summary><pre>' +
+          ATV.escMasked(JSON.stringify({ result: payload.result, explanation: payload.explanation }, null, 2)) +
+          '</pre></details>'
+        : '') +
+      supportCardHtml({ status: 'finished but could not be displayed' });
+    $('#document-slot').innerHTML = documentHtml(payload.row);
+    renderActions(payload);
+    if (window.console && console.error) console.error('Case render failed', err);
   }
 
   ATV.boot(function (user) {
